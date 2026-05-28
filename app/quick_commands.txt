@@ -1,0 +1,10 @@
+uvicorn app.main:app --reload
+
+sqlite3 caldwell_symphony.db
+
+select * from media;
+select * from users;
+select * from comments;
+
+SEED DATA 
+python seed_data.py
