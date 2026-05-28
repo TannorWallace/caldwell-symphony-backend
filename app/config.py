@@ -5,14 +5,17 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     SQLALCHEMY_DATABASE_URL: str = "sqlite+aiosqlite:///./caldwell_symphony.db"
 
-    #JWT and OAUTH 
+    # JWT
     SECRET_KEY: str = "ytlV!PX7jao6S\?7!/0T]lCJ9S.UY!6,V[zx9S&WqG2hYn4@"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7   # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
-    #SUPABASE CONFIG
-    # SUPABASE CONFIG (using Service Role key for backend uploads)
+    # SUPABASE - Load from environment variable (much safer)
     SUPABASE_URL: str = "https://yxkharrshmhyfkmsbdyy.supabase.co"
-    SUPABASE_KEY: str = "sb_secret_3ih6E-3WM5jmKZr-JgF3RQ_EEPQwYt2"
+    SUPABASE_KEY: str = ""   # ← Leave empty here
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
 settings = Settings()
