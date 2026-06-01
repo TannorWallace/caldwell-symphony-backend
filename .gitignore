@@ -2,3 +2,101 @@
 __pycache__/
 *.pyc
 caldwell_symphony.db
+.vscode/
+CELLO_TEST_PIC.jpg
+seed_data.py
+quick_commands.txt
+
+# =============================================
+# Environment & Secrets
+# =============================================
+.env
+.env.*
+!.env.example
+
+# =============================================
+# Virtual Environment
+# =============================================
+.venv/
+venv/
+ENV/
+
+# =============================================
+# Python
+# =============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =============================================
+# Database & Local Data
+# =============================================
+*.db
+*.sqlite3
+caldwell_symphony.db
+
+# =============================================
+# IDE / Editor
+# =============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================
+# Logs & Temp
+# =============================================
+*.log
+logs/
+tmp/
+temp/
+
+# =============================================
+# Testing & Coverage
+# =============================================
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# =============================================
+# OS generated files
+# =============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================
+# Alembic (when we migrate to PostgreSQL)
+# =============================================
+alembic/versions/*.py
+# (we'll keep the alembic.ini and env.py on purpose)

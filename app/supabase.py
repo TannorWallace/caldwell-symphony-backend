@@ -1,39 +1,28 @@
-import httpx
-from .config import settings
-from fastapi import HTTPException
+from supabase import create_client, Client
+from app.config import settings
 
 class SupabaseStorage:
     def __init__(self):
-        self.url = settings.SUPABASE_URL
-        self.key = settings.SUPABASE_KEY
-        self.headers = {
-            "Authorization": f"Bearer {self.key}",
-            "apikey": self.key,                    # ← This is critical
-            "Content-Type": "application/json"
-        }
+        self.client: Client = create_client(
+            supabase_url=settings.SUPABASE_URL,
+            supabase_key=settings.SUPABASE_KEY
+        )
 
     async def upload_file(self, bucket: str, file_path: str, file_bytes: bytes, content_type: str):
-        """Upload a file to Supabase Storage"""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.url}/storage/v1/object/{bucket}/{file_path}",
-                    headers=self.headers,
-                    files={"file": (file_path, file_bytes, content_type)}
-                )
-                
-                print(f"Supabase Status Code: {response.status_code}")
-                print(f"Supabase Response Body: {response.text}")
-
-                response.raise_for_status()
-                return response.json()
-
-            except httpx.HTTPStatusError as e:
-                print(f"Supabase ERROR {e.response.status_code}: {e.response.text}")
-                raise HTTPException(status_code=500, detail=f"Upload failed: {e.response.text}")
-            except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        """Upload file to Supabase Storage"""
+        try:
+            response = self.client.storage.from_(bucket).upload(
+                file_path,
+                file_bytes,
+                file_options={"content-type": content_type}
+            )
+            return response
+        except Exception as e:
+            raise Exception(f"Upload failed: {str(e)}")
 
     def get_public_url(self, bucket: str, file_path: str):
-        return f"{self.url}/storage/v1/object/public/{bucket}/{file_path}"
+        """Get public URL for the file"""
+        return self.client.storage.from_(bucket).get_public_url(file_path)
+
+# Singleton instance
+supabase_storage = SupabaseStorage()

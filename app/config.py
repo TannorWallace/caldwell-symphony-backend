@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
-    # SUPABASE - Load from environment variable (much safer)
-    SUPABASE_URL: str = "https://yxkharrshmhyfkmsbdyy.supabase.co"
-    SUPABASE_KEY: str = ""   # ← Leave empty here
+    # Supabase - loaded securely from .env
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
 
     class Config:
         env_file = ".env"
