@@ -3,14 +3,16 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Caldwell Symphony API"
     API_V1_STR: str = "/api/v1"
-    SQLALCHEMY_DATABASE_URL: str = "sqlite+aiosqlite:///./caldwell_symphony.db"
+
+    # This will now be loaded from your .env file
+    SQLALCHEMY_DATABASE_URL: str = ""
 
     # JWT
-    SECRET_KEY: str = "ytlV!PX7jao6S\?7!/0T]lCJ9S.UY!6,V[zx9S&WqG2hYn4@"
+    SECRET_KEY: str = r"ytlV!PX7jao6S\?7!/0T]lCJ9S.UY!6,V[zx9S&WqG2hYn4@"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
-    # Supabase - loaded securely from .env
+    # Supabase Storage
     SUPABASE_URL: str
     SUPABASE_KEY: str
 

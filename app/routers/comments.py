@@ -131,17 +131,20 @@ async def get_comments_for_media(
 ):
     """Paginated flat list of comments for a media item.
     Frontend uses parent_id to build the threaded tree."""
-    
-    # Total count for pagination
+
+    from sqlalchemy import func
+
+    # Efficient COUNT(*) query (does not load rows into memory)
     count_result = await db.execute(
-        select(CommentModel)
+        select(func.count())
+        .select_from(CommentModel)
         .where(
             CommentModel.media_id == media_id,
             CommentModel.is_approved == True,
             CommentModel.is_deleted == False,
         )
     )
-    total = len(count_result.scalars().all())
+    total = count_result.scalar_one()
 
     # Paginated comments
     result = await db.execute(

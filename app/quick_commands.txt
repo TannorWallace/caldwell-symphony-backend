@@ -8,3 +8,6 @@ select * from comments;
 
 SEED DATA 
 python seed_data.py
+
+SUPABASE URL FOR VERIFCATION ON DATA RECIEVED
+https://supabase.com/dashboard/project/yxkharrshmhyfkmsbdyy/storage/files
