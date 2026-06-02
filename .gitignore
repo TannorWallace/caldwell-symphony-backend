@@ -1,12 +1,3 @@
-.env
-__pycache__/
-*.pyc
-caldwell_symphony.db
-.vscode/
-CELLO_TEST_PIC.jpg
-seed_data.py
-quick_commands.txt
-
 # =============================================
 # Environment & Secrets
 # =============================================
@@ -48,7 +39,7 @@ share/python-wheels/
 MANIFEST
 
 # =============================================
-# Database & Local Data
+# Local Database (SQLite)
 # =============================================
 *.db
 *.sqlite3
@@ -62,6 +53,13 @@ caldwell_symphony.db
 *.swp
 *.swo
 *~
+
+# =============================================
+# Project-specific files to ignore
+# =============================================
+CELLO_TEST_PIC.jpg
+seed_data.py
+quick_commands.txt
 
 # =============================================
 # Logs & Temp
@@ -94,9 +92,3 @@ htmlcov/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# =============================================
-# Alembic (when we migrate to PostgreSQL)
-# =============================================
-alembic/versions/*.py
-# (we'll keep the alembic.ini and env.py on purpose)
