@@ -7,7 +7,7 @@ from ..database import get_db
 from ..dependencies import get_current_active_user
 from ..models.models import Comment as CommentModel, User as UserModel
 from ..schemas.comment import Comment, CommentCreate, CommentUpdate
-from ..schemas.user import PaginatedResponse   # ← Make sure this exists
+from ..schemas.user import PaginatedResponse
 
 router = APIRouter(prefix="/api/v1/comments", tags=["comments"])
 
@@ -68,8 +68,11 @@ async def update_own_comment(
 
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
+
     if comment.user_id != current_user.id:
+        await db.rollback()   # ← Added for test stability + correctness
         raise HTTPException(status_code=403, detail="You can only edit your own comments")
+
     if comment.is_deleted:
         raise HTTPException(status_code=400, detail="Cannot edit a deleted comment")
 
@@ -95,8 +98,11 @@ async def delete_own_comment(
 
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
+
     if comment.user_id != current_user.id:
+        await db.rollback()   # ← Added for test stability + correctness
         raise HTTPException(status_code=403, detail="You can only delete your own comments")
+
     if comment.is_deleted:
         raise HTTPException(status_code=400, detail="Comment is already deleted")
 
@@ -119,55 +125,3 @@ async def delete_own_comment(
         .values(is_deleted=True)
     )
     await db.commit()
-
-
-# ==================== GET COMMENTS FOR MEDIA (WITH PAGINATION) ====================
-@router.get("/media/{media_id}", response_model=PaginatedResponse)
-async def get_comments_for_media(
-    media_id: int,
-    skip: int = Query(0, ge=0, description="Number of items to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Paginated flat list of comments for a media item.
-    Frontend uses parent_id to build the threaded tree."""
-
-    from sqlalchemy import func
-
-    # Efficient COUNT(*) query (does not load rows into memory)
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(CommentModel)
-        .where(
-            CommentModel.media_id == media_id,
-            CommentModel.is_approved == True,
-            CommentModel.is_deleted == False,
-        )
-    )
-    total = count_result.scalar_one()
-
-    # Paginated comments
-    result = await db.execute(
-        select(CommentModel)
-        .options(selectinload(CommentModel.user))
-        .where(
-            CommentModel.media_id == media_id,
-            CommentModel.is_approved == True,
-            CommentModel.is_deleted == False,
-        )
-        .order_by(CommentModel.created_at.asc())
-        .offset(skip)
-        .limit(limit)
-    )
-    comments = result.scalars().all()
-
-    for comment in comments:
-        if comment.user:
-            comment.username = comment.user.username
-
-    return {
-        "items": comments,
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }

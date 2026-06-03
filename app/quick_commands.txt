@@ -11,3 +11,16 @@ python seed_data.py
 
 SUPABASE URL FOR VERIFCATION ON DATA RECIEVED
 https://supabase.com/dashboard/project/yxkharrshmhyfkmsbdyy/storage/files
+
+*PY_TEST COMMANDS
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run only auth tests
+pytest tests/test_auth.py -v
+
+# Run only comment tests
+pytest tests/test_comments.py -v

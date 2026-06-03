@@ -1,13 +1,11 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
-# Import other schemas we need
 from .comment import Comment
 from .media import Media
 
 
-# ==================== BASIC USER SCHEMAS ====================
 class UserBase(BaseModel):
     email: EmailStr
     username: str
@@ -18,13 +16,12 @@ class UserCreate(UserBase):
 
 
 class User(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     is_active: bool
     is_admin: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class UserDelete(BaseModel):
@@ -36,23 +33,19 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-# ==================== USER ACTIVITY ====================
 class UserActivity(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     total_comments: int
     total_media: int
     recent_comments: List[Comment]
     my_media: List[Media]
 
-    class Config:
-        from_attributes = True
 
-
-# ==================== PAGINATED RESPONSE (for comments) ====================
 class PaginatedResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     items: List[Comment]
     total: int
     skip: int
     limit: int
-
-    class Config:
-        from_attributes = True

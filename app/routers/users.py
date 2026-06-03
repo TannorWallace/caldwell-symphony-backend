@@ -1,7 +1,7 @@
 from jose import jwt
 from sqlalchemy import select
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,7 +34,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -153,6 +153,7 @@ async def update_own_profile(
         )
     )
     if result.scalar_one_or_none():
+        await db.rollback()
         raise HTTPException(status_code=400, detail="Email or username already taken")
 
     current_user.email = user_in.email
@@ -174,6 +175,7 @@ async def delete_own_account(
     current_user: UserModel = Depends(get_current_active_user)
 ):
     if not verify_password(delete_data.password, current_user.hashed_password):
+        await db.rollback()
         raise HTTPException(status_code=401, detail="Incorrect password")
 
     await db.delete(current_user)
