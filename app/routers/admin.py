@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List
@@ -8,6 +8,7 @@ from ..database import get_db
 from ..models.models import User as UserModel, Comment as CommentModel
 from ..schemas.user import UserCreate, User
 from ..routers.users import get_password_hash
+from ..exceptions import NotFoundException, BadRequestException
 
 router = APIRouter(
     prefix="/api/v1/admin",
@@ -22,7 +23,7 @@ async def bootstrap_first_admin(
 ):
     result = await db.execute(select(UserModel).where(UserModel.is_admin == True))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="An admin user already exists.")
+        raise BadRequestException("An admin user already exists.")
 
     result = await db.execute(
         select(UserModel).where(
@@ -30,7 +31,7 @@ async def bootstrap_first_admin(
         )
     )
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email or username already registered")
+        raise BadRequestException("Email or username already registered")
 
     hashed_password = get_password_hash(user_in.password)
 
@@ -67,7 +68,7 @@ async def get_user_by_id(
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException("User not found")
     return user
 
 
@@ -81,7 +82,7 @@ async def update_user(
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException("User not found")
 
     user.email = user_in.email
     user.username = user_in.username
@@ -102,13 +103,13 @@ async def promote_to_admin(
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException("User not found")
     if user.is_admin:
-        raise HTTPException(status_code=400, detail="User is already an admin")
+        raise BadRequestException("User is already an admin")
 
     user.is_admin = True
     await db.commit()
-    return {"message": f"User {user.username} has been promoted to admin"}
+    return {"message": "User has been promoted to admin"}
 
 
 @router.post("/users/{user_id}/demote")
@@ -120,13 +121,13 @@ async def demote_from_admin(
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException("User not found")
     if not user.is_admin:
-        raise HTTPException(status_code=400, detail="User is not an admin")
+        raise BadRequestException("User is not an admin")
 
     user.is_admin = False
     await db.commit()
-    return {"message": f"User {user.username} has been demoted"}
+    return {"message": "User has been demoted"}
 
 
 @router.delete("/users/{user_id}")
@@ -138,7 +139,7 @@ async def delete_user(
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException("User not found")
 
     await db.delete(user)
     await db.commit()
@@ -156,7 +157,7 @@ async def delete_comment(
     result = await db.execute(select(CommentModel).where(CommentModel.id == comment_id))
     comment = result.scalar_one_or_none()
     if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise NotFoundException("Comment not found")
 
     # Collect all descendant reply IDs
     ids_to_delete = [comment_id]
@@ -172,7 +173,6 @@ async def delete_comment(
             ids_to_delete.append(child_id)
             to_check.append(child_id)
 
-    # Hard delete the entire thread
     await db.execute(
         delete(CommentModel).where(CommentModel.id.in_(ids_to_delete))
     )

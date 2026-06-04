@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -8,11 +8,11 @@ from ..dependencies import get_current_active_user
 from ..models.models import Comment as CommentModel, User as UserModel
 from ..schemas.comment import Comment, CommentCreate, CommentUpdate
 from ..schemas.user import PaginatedResponse
+from ..exceptions import NotFoundException, ForbiddenException, BadRequestException
 
 router = APIRouter(prefix="/api/v1/comments", tags=["comments"])
 
 
-# ==================== CREATE COMMENT / REPLY ====================
 @router.post("/", response_model=Comment, status_code=status.HTTP_201_CREATED)
 async def create_comment(
     comment_in: CommentCreate,
@@ -25,7 +25,7 @@ async def create_comment(
         )
         parent = parent_result.scalar_one_or_none()
         if not parent or parent.media_id != comment_in.media_id:
-            raise HTTPException(status_code=400, detail="Invalid parent comment or media mismatch")
+            raise BadRequestException("Invalid parent comment or media mismatch")
 
     db_comment = CommentModel(
         content=comment_in.content,
@@ -51,7 +51,6 @@ async def create_comment(
     return comment
 
 
-# ==================== UPDATE OWN COMMENT ====================
 @router.put("/{comment_id}", response_model=Comment)
 async def update_own_comment(
     comment_id: int,
@@ -67,14 +66,14 @@ async def update_own_comment(
     comment = result.scalar_one_or_none()
 
     if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise NotFoundException("Comment not found")
 
     if comment.user_id != current_user.id:
-        await db.rollback()   # ← Added for test stability + correctness
-        raise HTTPException(status_code=403, detail="You can only edit your own comments")
+        await db.rollback()
+        raise ForbiddenException("You can only edit your own comments")
 
     if comment.is_deleted:
-        raise HTTPException(status_code=400, detail="Cannot edit a deleted comment")
+        raise BadRequestException("Cannot edit a deleted comment")
 
     comment.content = comment_in.content
     await db.commit()
@@ -85,7 +84,6 @@ async def update_own_comment(
     return comment
 
 
-# ==================== DELETE OWN COMMENT + ALL REPLIES ====================
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_own_comment(
     comment_id: int,
@@ -97,14 +95,14 @@ async def delete_own_comment(
     comment = result.scalar_one_or_none()
 
     if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise NotFoundException("Comment not found")
 
     if comment.user_id != current_user.id:
-        await db.rollback()   # ← Added for test stability + correctness
-        raise HTTPException(status_code=403, detail="You can only delete your own comments")
+        await db.rollback()
+        raise ForbiddenException("You can only delete your own comments")
 
     if comment.is_deleted:
-        raise HTTPException(status_code=400, detail="Comment is already deleted")
+        raise BadRequestException("Comment is already deleted")
 
     ids_to_delete = [comment_id]
     to_check = [comment_id]

@@ -4,7 +4,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import selectinload
 
 from ..database import get_db
@@ -14,14 +14,13 @@ from ..schemas.user import UserCreate, User, Token, UserDelete, UserActivity
 from ..schemas.comment import Comment
 from ..schemas.media import Media
 from ..dependencies import get_current_active_user
-
+from ..exceptions import BadRequestException, UnauthorizedException, NotFoundException
 
 router = APIRouter(
     prefix="/api/v1/users",
     tags=["Users"]
 )
 
-# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_password_hash(password: str) -> str:
@@ -29,7 +28,7 @@ def get_password_hash(password: str) -> str:
         password = password[:72]
     return pwd_context.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict):
@@ -39,7 +38,6 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-# ==================== REGISTER REGULAR USER ====================
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
 async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -48,7 +46,7 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
         )
     )
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email or username already registered")
+        raise BadRequestException("Email or username already registered")
 
     hashed_password = get_password_hash(user_in.password)
 
@@ -66,7 +64,6 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
     return db_user
 
 
-# ==================== LOGIN ====================
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -78,14 +75,10 @@ async def login_for_access_token(
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise UnauthorizedException("Incorrect username or password")
 
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+        raise BadRequestException("Inactive user")
 
     access_token = create_access_token(
         data={"sub": user.username, "is_admin": user.is_admin}
@@ -94,21 +87,16 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# ==================== PROTECTED ROUTES ====================
 @router.get("/profile", response_model=User)
 async def get_current_user_profile(current_user: UserModel = Depends(get_current_active_user)):
     return current_user
 
 
-# ==================== MY ACTIVITY (NO /me/) ====================
 @router.get("/activity", response_model=UserActivity)
 async def get_my_activity(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """Returns user's recent comments and all their uploaded media"""
-    
-    # Recent comments (last 10)
     comments_result = await db.execute(
         select(CommentModel)
         .options(selectinload(CommentModel.user))
@@ -118,12 +106,10 @@ async def get_my_activity(
     )
     recent_comments = comments_result.scalars().all()
 
-    # Manually attach username (fixes null username issue)
     for comment in recent_comments:
         if comment.user:
             comment.username = comment.user.username
 
-    # All media uploaded by this user
     media_result = await db.execute(
         select(MediaModel)
         .where(MediaModel.user_id == current_user.id)
@@ -139,7 +125,6 @@ async def get_my_activity(
     }
 
 
-# ==================== UPDATE OWN PROFILE ====================
 @router.put("/profile", response_model=User)
 async def update_own_profile(
     user_in: UserCreate,
@@ -154,7 +139,7 @@ async def update_own_profile(
     )
     if result.scalar_one_or_none():
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Email or username already taken")
+        raise BadRequestException("Email or username already taken")
 
     current_user.email = user_in.email
     current_user.username = user_in.username
@@ -167,7 +152,6 @@ async def update_own_profile(
     return current_user
 
 
-# ==================== DELETE OWN ACCOUNT ====================
 @router.delete("/profile")
 async def delete_own_account(
     delete_data: UserDelete,
@@ -176,7 +160,7 @@ async def delete_own_account(
 ):
     if not verify_password(delete_data.password, current_user.hashed_password):
         await db.rollback()
-        raise HTTPException(status_code=401, detail="Incorrect password")
+        raise UnauthorizedException("Incorrect password")
 
     await db.delete(current_user)
     await db.commit()

@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from .routers.admin import router as admin_router
 from .routers.comments import router as comments_router
 from .routers.media import router as media_router
 from .config import settings
+from .exceptions import APIException
 
 
 @asynccontextmanager
@@ -28,7 +30,6 @@ app = FastAPI(
 
 # ===================== SECURITY MIDDLEWARE =====================
 
-# CORS - Now safely using the list from settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -37,7 +38,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Trusted Host (only enabled in production)
 if not settings.DEBUG:
     app.add_middleware(
         TrustedHostMiddleware,
@@ -45,7 +45,6 @@ if not settings.DEBUG:
     )
 
 
-# Basic security headers middleware
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
@@ -53,6 +52,25 @@ async def add_security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+# ===================== GLOBAL EXCEPTION HANDLERS =====================
+
+@app.exception_handler(APIException)
+async def api_exception_handler(request: Request, exc: APIException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    # In production you might want to log this
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred. Please try again later."}
+    )
 
 
 # ===================== ROUTERS =====================
@@ -68,4 +86,4 @@ async def root():
     return {
         "message": "Caldwell Symphony API is running",
         "docs_enabled": settings.DEBUG
-    } 
+    }

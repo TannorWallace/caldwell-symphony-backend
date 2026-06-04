@@ -24,3 +24,4 @@ class Media(MediaBase):
     thumbnail_url: Optional[str] = None
     created_at: Optional[datetime] = None
     user_id: int
+    user_username: Optional[str] = None   # ← Added

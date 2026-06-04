@@ -10,6 +10,7 @@ from app.main import app
 from app.database import get_db, Base
 from app.models.models import User as UserModel, Media as MediaModel
 from app.routers.users import get_password_hash
+from app.dependencies import get_current_active_user
 
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -34,6 +35,17 @@ class TestUserData:
 class TestMediaData:
     __test__ = False
     id: int
+
+
+@dataclass
+class FakeUser:
+    """Used for dependency override in tests."""
+    __test__ = False
+    id: int
+    email: str = "test@example.com"
+    username: str = "testuser"
+    is_active: bool = True
+    is_admin: bool = False
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -68,7 +80,41 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
-# ==================== TEST DATA ====================
+# ==================== REUSABLE AUTH FIXTURES ====================
+
+@pytest.fixture
+async def authenticated_client(client: AsyncClient, test_user: TestUserData):
+    """Returns a client authenticated as a regular (non-admin) user."""
+    def override():
+        return FakeUser(
+            id=test_user.id,
+            email=test_user.email,
+            username=test_user.username,
+            is_active=True,
+            is_admin=False
+        )
+    app.dependency_overrides[get_current_active_user] = override
+    yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def admin_client(client: AsyncClient, test_admin: TestUserData):
+    """Returns a client authenticated as an admin user."""
+    def override():
+        return FakeUser(
+            id=test_admin.id,
+            email=test_admin.email,
+            username=test_admin.username,
+            is_active=True,
+            is_admin=True
+        )
+    app.dependency_overrides[get_current_active_user] = override
+    yield client
+    app.dependency_overrides.clear()
+
+
+# ==================== TEST DATA FIXTURES ====================
 
 @pytest.fixture
 async def test_user(db_session: AsyncSession) -> TestUserData:
