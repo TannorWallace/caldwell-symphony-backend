@@ -24,3 +24,18 @@ pytest tests/test_auth.py -v
 
 # Run only comment tests
 pytest tests/test_comments.py -v
+
+
+========ALEMBIC COMMANDS=========
+# 1. Make changes to your SQLAlchemy models (in app/models/models.py)
+
+# 2. Generate a new migration
+alembic revision --autogenerate -m "add user bio field"     # ← change the message
+
+# 3. Review the generated migration file in alembic/versions/
+
+# 4. Apply it to the database
+alembic upgrade head
+
+alembic current      # What version is the DB on?
+alembic heads        # What is the latest migration?
