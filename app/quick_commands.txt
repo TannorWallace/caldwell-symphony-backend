@@ -6,7 +6,7 @@ select * from media;
 select * from users;
 select * from comments;
 
-SEED DATA 
+SEED DATA  
 python seed_data.py
 
 SUPABASE URL FOR VERIFCATION ON DATA RECIEVED
