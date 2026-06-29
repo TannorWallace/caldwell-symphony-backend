@@ -8,6 +8,7 @@ from .routers.users import router as users_router
 from .routers.admin import router as admin_router
 from .routers.comments import router as comments_router
 from .routers.media import router as media_router
+from .routers.performances import router as performances_router
 from .config import settings
 from .exceptions import APIException
 
@@ -79,7 +80,7 @@ app.include_router(users_router)
 app.include_router(admin_router)
 app.include_router(comments_router)
 app.include_router(media_router)
-
+app.include_router(performances_router)
 
 @app.get("/")
 async def root():

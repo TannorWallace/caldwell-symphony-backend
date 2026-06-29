@@ -82,9 +82,34 @@ class Media(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     user: Mapped["User"] = relationship("User", back_populates="media")
 
+    # Add these two fields inside the Media class NEW PERFORMANCE (ALBUM) ITEMS
+    performance_id: Mapped[Optional[int]] = mapped_column(ForeignKey("performances.id"), nullable=True)
+    performance: Mapped["Performance | None"] = relationship("Performance", back_populates="media")
+
     # Relationship to comments
     comments: Mapped[list["Comment"]] = relationship(
         "Comment", 
         back_populates="media", 
         cascade="all, delete-orphan"
     )
+
+
+# ==================== PERFORMANCE MODEL ====================
+class Performance(Base):
+    __tablename__ = "performances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    event_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cover_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    creator: Mapped["User"] = relationship("User")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationship to media items
+    media: Mapped[list["Media"]] = relationship("Media", back_populates="performance", cascade="all, delete-orphan")
