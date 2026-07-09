@@ -2,17 +2,63 @@ from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from typing import List
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
 from ..models.models import Comment as CommentModel, User as UserModel
 from ..schemas.comment import Comment, CommentCreate, CommentUpdate
-from ..schemas.user import PaginatedResponse
 from ..exceptions import NotFoundException, ForbiddenException, BadRequestException
 
 router = APIRouter(prefix="/api/v1/comments", tags=["comments"])
 
 
+# ==================== GET COMMENTS FOR MEDIA ====================
+@router.get("/media/{media_id}", response_model=List[Comment])
+async def get_comments_for_media(
+    media_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all approved comments with nested replies."""
+    result = await db.execute(
+        select(CommentModel)
+        .options(selectinload(CommentModel.user))
+        .where(
+            CommentModel.media_id == media_id,
+            CommentModel.is_approved == True,
+            CommentModel.is_deleted == False,
+        )
+        .order_by(CommentModel.created_at.asc())
+    )
+    flat_comments = result.scalars().all()
+
+    # Attach username
+    for comment in flat_comments:
+        if comment.user:
+            comment.username = comment.user.username
+
+    def build_nested_tree(comments: list) -> list:
+        comment_map = {c.id: c for c in comments}
+
+        for comment in comments:
+            comment.__dict__['replies'] = []
+
+        roots = []
+        for comment in comments:
+            if comment.parent_id is None:
+                roots.append(comment)
+            else:
+                parent = comment_map.get(comment.parent_id)
+                if parent:
+                    if not parent.__dict__.get('replies'):
+                        parent.__dict__['replies'] = []
+                    parent.__dict__['replies'].append(comment)
+        return roots
+
+    return build_nested_tree(flat_comments)
+
+
+# ==================== CREATE COMMENT / REPLY ====================
 @router.post("/", response_model=Comment, status_code=status.HTTP_201_CREATED)
 async def create_comment(
     comment_in: CommentCreate,
@@ -40,17 +86,25 @@ async def create_comment(
     await db.commit()
     await db.refresh(db_comment)
 
+    # Reload with user relationship
     result = await db.execute(
         select(CommentModel)
         .options(selectinload(CommentModel.user))
         .where(CommentModel.id == db_comment.id)
     )
     comment = result.scalar_one_or_none()
-    if comment and comment.user:
-        comment.username = comment.user.username
+
+    if comment:
+        # Safely initialize replies to prevent lazy-loading during serialization
+        comment.__dict__['replies'] = []
+        
+        if comment.user:
+            comment.username = comment.user.username
+
     return comment
 
 
+# ==================== UPDATE OWN COMMENT ====================
 @router.put("/{comment_id}", response_model=Comment)
 async def update_own_comment(
     comment_id: int,
@@ -79,11 +133,16 @@ async def update_own_comment(
     await db.commit()
     await db.refresh(comment)
 
+    # === FIX: Prevent MissingGreenlet error on replies during serialization ===
+    comment.__dict__['replies'] = []
+
     if comment.user:
         comment.username = comment.user.username
+
     return comment
 
 
+# ==================== DELETE OWN COMMENT (with cascade to replies) ====================
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_own_comment(
     comment_id: int,

@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ..database import get_db
-from ..models.models import Performance as PerformanceModel, User as UserModel
-from ..schemas.performance import Performance, PerformanceCreate, PerformanceUpdate
+from ..models.models import Performance as PerformanceModel, User as UserModel, Media
+from ..schemas.performance import Performance, PerformanceCreate, PerformanceDetail, PerformanceUpdate
 from ..dependencies import get_current_admin_user
-from ..exceptions import NotFoundException, BadRequestException
+from ..exceptions import NotFoundException
 
 router = APIRouter(
     prefix="/api/v1/performances",
@@ -25,25 +25,33 @@ async def list_performances(
     result = await db.execute(
         select(PerformanceModel)
         .where(PerformanceModel.is_published == True)
-        .order_by(PerformanceModel.event_date.desc().nullslast(), PerformanceModel.created_at.desc())
+        .order_by(PerformanceModel.created_at.desc())
     )
     return result.scalars().all()
 
 
-@router.get("/{performance_id}", response_model=Performance)
+@router.get("/{performance_id}", response_model=PerformanceDetail)
 async def get_performance(
     performance_id: int = Path(..., gt=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a single performance by ID (with its media)"""
+    """Get a single performance by ID (with its media and uploader info)"""
     result = await db.execute(
         select(PerformanceModel)
-        .options(selectinload(PerformanceModel.media))
+        .options(
+            selectinload(PerformanceModel.media).selectinload(Media.user)
+        )
         .where(PerformanceModel.id == performance_id)
     )
     performance = result.scalar_one_or_none()
     if not performance:
         raise NotFoundException("Performance not found")
+
+    # Populate user_username on each media item
+    for media in performance.media:
+        if media.user:
+            media.user_username = media.user.username
+
     return performance
 
 
@@ -106,7 +114,3 @@ async def delete_performance(
     await db.delete(performance)
     await db.commit()
     return None
-
-
-# Include admin router in main app
-# (We'll register it in main.py next)

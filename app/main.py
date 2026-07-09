@@ -31,12 +31,20 @@ app = FastAPI(
 
 # ===================== SECURITY MIDDLEWARE =====================
 
+# Parse comma-separated string into a proper list
+allowed_origins = [
+    origin.strip() 
+    for origin in settings.ALLOWED_ORIGINS.split(",") 
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["*"],                    # More permissive for development
+    expose_headers=["*"],
 )
 
 if not settings.DEBUG:
@@ -67,7 +75,6 @@ async def api_exception_handler(request: Request, exc: APIException):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    # In production you might want to log this
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected error occurred. Please try again later."}
