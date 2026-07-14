@@ -1,20 +1,30 @@
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List
+import uuid
 
 from ..dependencies import get_current_admin_user
 from ..database import get_db
-from ..models.models import User as UserModel, Comment as CommentModel, Performance as PerformanceModel
+from ..models.models import (
+    User as UserModel, 
+    Comment as CommentModel, 
+    Performance as PerformanceModel,
+    Media as MediaModel
+)
 from ..schemas.user import UserCreate, User
 from ..schemas.performance import Performance, PerformanceCreate, PerformanceUpdate
 from ..routers.users import get_password_hash
 from ..exceptions import NotFoundException, BadRequestException
+from ..supabase import SupabaseStorage
 
 router = APIRouter(
     prefix="/api/v1/admin",
     tags=["Admin"]
 )
+
+supabase_storage = SupabaseStorage()
+
 
 # ==================== TEMPORARY BOOTSTRAP ENDPOINT ====================
 @router.post("/bootstrap-first-admin", response_model=User, status_code=status.HTTP_201_CREATED)
@@ -238,3 +248,116 @@ async def delete_performance(
     await db.delete(performance)
     await db.commit()
     return None
+
+
+# ==================== ADMIN MEDIA UPLOAD (Supabase) ====================
+
+@router.post("/media", status_code=status.HTTP_201_CREATED)
+async def upload_single_media(
+    file: UploadFile = File(...),
+    title: str = Form(None),
+    performance_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Admin uploads a single image to Supabase and links it to a performance"""
+
+    # Check if performance exists
+    perf_result = await db.execute(
+        select(PerformanceModel).where(PerformanceModel.id == performance_id)
+    )
+    if not perf_result.scalar_one_or_none():
+        raise NotFoundException("Performance not found")
+
+    # Generate unique file path
+    file_ext = file.filename.split(".")[-1] if file.filename else "jpg"
+    file_path = f"performances/{performance_id}/{uuid.uuid4()}.{file_ext}"
+
+    file_bytes = await file.read()
+
+    try:
+        await supabase_storage.upload_file(
+            bucket="media",
+            file_path=file_path,
+            file_bytes=file_bytes,
+            content_type=file.content_type or "image/jpeg"
+        )
+    except Exception as e:
+        raise BadRequestException(f"Supabase upload failed: {str(e)}")
+
+    public_url = supabase_storage.get_public_url("media", file_path)
+
+    # Save to database
+    db_media = MediaModel(
+        media_type="image",
+        bucket="media",
+        file_path=file_path,
+        public_url=public_url,
+        title=title or file.filename,
+        user_id=current_admin.id,
+        performance_id=performance_id
+    )
+
+    db.add(db_media)
+    await db.commit()
+    await db.refresh(db_media)
+
+    return {"message": "Image uploaded successfully", "media_id": db_media.id}
+
+
+@router.post("/media/bulk", status_code=status.HTTP_201_CREATED)
+async def upload_multiple_media(
+    files: List[UploadFile] = File(...),
+    title: str = Form(None),
+    performance_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Admin uploads multiple images to Supabase and links them to a performance"""
+
+    # Check if performance exists
+    perf_result = await db.execute(
+        select(PerformanceModel).where(PerformanceModel.id == performance_id)
+    )
+    if not perf_result.scalar_one_or_none():
+        raise NotFoundException("Performance not found")
+
+    uploaded_count = 0
+
+    for file in files:
+        file_ext = file.filename.split(".")[-1] if file.filename else "jpg"
+        file_path = f"performances/{performance_id}/{uuid.uuid4()}.{file_ext}"
+
+        file_bytes = await file.read()
+
+        try:
+            await supabase_storage.upload_file(
+                bucket="media",
+                file_path=file_path,
+                file_bytes=file_bytes,
+                content_type=file.content_type or "image/jpeg"
+            )
+        except Exception as e:
+            raise BadRequestException(f"Failed to upload {file.filename}: {str(e)}")
+
+        public_url = supabase_storage.get_public_url("media", file_path)
+
+        db_media = MediaModel(
+            media_type="image",
+            bucket="media",
+            file_path=file_path,
+            public_url=public_url,
+            title=title or file.filename,
+            user_id=current_admin.id,
+            performance_id=performance_id
+        )
+
+        db.add(db_media)
+        uploaded_count += 1
+
+    await db.commit()
+
+    return {
+        "message": f"Successfully uploaded {uploaded_count} images",
+        "performance_id": performance_id
+    }

@@ -1,9 +1,12 @@
 # =============================================
-# Environment & Secrets TEST
+# Environment & Secrets
 # =============================================
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
 
 # =============================================
 # Virtual Environment
@@ -11,6 +14,7 @@
 .venv/
 venv/
 ENV/
+env/
 
 # =============================================
 # Python
@@ -39,12 +43,16 @@ share/python-wheels/
 MANIFEST
 
 # =============================================
-# Local Database (SQLite)
+# Local Database
 # =============================================
 *.db
 *.sqlite3
 caldwell_symphony.db
-
+# =============================================
+# pycache & bytecode
+# ============================================
+__pycache__/
+*.pyc
 # =============================================
 # IDE / Editor
 # =============================================
@@ -55,7 +63,7 @@ caldwell_symphony.db
 *~
 
 # =============================================
-# Project-specific files to ignore
+# Project-specific files
 # =============================================
 CELLO_TEST_PIC.jpg
 seed_data.py
@@ -92,3 +100,9 @@ htmlcov/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# =============================================
+# Optional: Alembic (uncomment if you want to ignore old migrations)
+# =============================================
+# alembic/versions/*.py
+# !alembic/versions/__init__.py
