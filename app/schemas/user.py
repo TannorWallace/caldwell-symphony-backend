@@ -2,17 +2,25 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
-from .comment import Comment
+from .comment import Comment, CommentActivity
 from .media import Media
 
 
 class UserBase(BaseModel):
     email: EmailStr
     username: str
+    full_name: str
 
 
 class UserCreate(UserBase):
     password: str
+
+
+class UserUpdate(BaseModel):                     # ← NEW
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
 
 
 class User(UserBase):
@@ -38,7 +46,7 @@ class UserActivity(BaseModel):
 
     total_comments: int
     total_media: int
-    recent_comments: List[Comment]
+    recent_comments: List[CommentActivity]     # ← changed from Comment
     my_media: List[Media]
 
 

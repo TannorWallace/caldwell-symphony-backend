@@ -1,9 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
-from typing import List, Optional, ForwardRef
-
-# Forward reference for recursive replies
-Comment = ForwardRef("Comment")
+from typing import List, Optional
 
 
 class CommentBase(BaseModel):
@@ -20,6 +17,8 @@ class CommentUpdate(CommentBase):
 
 
 class Comment(CommentBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     media_id: int
@@ -28,11 +27,23 @@ class Comment(CommentBase):
     is_deleted: bool
     created_at: datetime
     username: Optional[str] = None
-    replies: List["Comment"] = Field(default_factory=list)
-
-    class Config:
-        from_attributes = True
+    replies: Optional[List["Comment"]] = Field(default_factory=list)
 
 
-# This is required for recursive Pydantic models
+class CommentActivity(BaseModel):
+    """Simplified comment for activity views (no nested replies)"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content: str
+    user_id: int
+    media_id: int
+    parent_id: Optional[int] = None
+    is_approved: bool
+    is_deleted: bool
+    created_at: datetime
+    username: Optional[str] = None
+
+
+# Rebuild for recursive model
 Comment.model_rebuild()

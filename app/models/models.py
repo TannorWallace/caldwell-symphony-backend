@@ -1,4 +1,4 @@
-from __future__ import annotations # this import allows for forward references in type hints, enabling us to reference classes that are defined later in the code.
+from __future__ import annotations
 
 from enum import Enum
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, DateTime, func
@@ -20,15 +20,14 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    # Relationship to comments
+    # Relationships
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
-
-    # Add this inside the User class
     media: Mapped[list["Media"]] = relationship("Media", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -56,7 +55,7 @@ class Comment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
-# ==================== MEDIA MODEL (Images + Videos with Supabase) ====================
+# ==================== MEDIA MODEL ====================
 class Media(Base):
     __tablename__ = "media"
 
@@ -82,14 +81,17 @@ class Media(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     user: Mapped["User"] = relationship("User", back_populates="media")
 
-    # Add these two fields inside the Media class NEW PERFORMANCE (ALBUM) ITEMS
+    # Link to Performance (this media belongs to a performance)
     performance_id: Mapped[Optional[int]] = mapped_column(ForeignKey("performances.id"), nullable=True)
-    performance: Mapped["Performance | None"] = relationship("Performance", back_populates="media")
+    performance: Mapped["Performance | None"] = relationship(
+        "Performance",
+        back_populates="media",
+        foreign_keys="[Media.performance_id]"   # ← Explicit foreign key
+    )
 
-    # Relationship to comments
     comments: Mapped[list["Comment"]] = relationship(
-        "Comment", 
-        back_populates="media", 
+        "Comment",
+        back_populates="media",
         cascade="all, delete-orphan"
     )
 
@@ -101,7 +103,14 @@ class Performance(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cover_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Cover image is now linked via media table
+    cover_media_id: Mapped[Optional[int]] = mapped_column(ForeignKey("media.id"), nullable=True)
+    cover_media: Mapped["Media | None"] = relationship(
+        "Media",
+        foreign_keys="[Performance.cover_media_id]"
+    )
+
     is_published: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -110,4 +119,10 @@ class Performance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    media: Mapped[list["Media"]] = relationship("Media", back_populates="performance", cascade="all, delete-orphan")
+    # All media items belonging to this performance
+    media: Mapped[list["Media"]] = relationship(
+        "Media",
+        back_populates="performance",
+        cascade="all, delete-orphan",
+        foreign_keys="[Media.performance_id]"   # ← FIXED: Explicit foreign key
+    )

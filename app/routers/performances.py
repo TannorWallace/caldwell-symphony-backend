@@ -21,13 +21,23 @@ router = APIRouter(
 async def list_performances(
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all published performances (newest first)"""
+    """Get all published performances (newest first) with cover image"""
     result = await db.execute(
         select(PerformanceModel)
+        .options(selectinload(PerformanceModel.cover_media))
         .where(PerformanceModel.is_published == True)
         .order_by(PerformanceModel.created_at.desc())
     )
-    return result.scalars().all()
+    performances = result.scalars().all()
+
+    # Attach a convenient cover_image_url for the frontend
+    for perf in performances:
+        if perf.cover_media:
+            perf.cover_image_url = perf.cover_media.public_url
+        else:
+            perf.cover_image_url = None
+
+    return performances
 
 
 @router.get("/{performance_id}", response_model=PerformanceDetail)
@@ -39,7 +49,8 @@ async def get_performance(
     result = await db.execute(
         select(PerformanceModel)
         .options(
-            selectinload(PerformanceModel.media).selectinload(Media.user)
+            selectinload(PerformanceModel.media).selectinload(Media.user),
+            selectinload(PerformanceModel.cover_media)
         )
         .where(PerformanceModel.id == performance_id)
     )
@@ -52,10 +63,18 @@ async def get_performance(
         if media.user:
             media.user_username = media.user.username
 
+    # Attach cover image url if it exists
+    if performance.cover_media:
+        performance.cover_image_url = performance.cover_media.public_url
+    else:
+        performance.cover_image_url = None
+
     return performance
 
 
 # ==================== ADMIN ENDPOINTS ====================
+# (These are not currently used because we put the admin endpoints in admin.py)
+# Keeping them here for reference / future use
 
 admin_router = APIRouter(
     prefix="/api/v1/admin/performances",

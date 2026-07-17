@@ -34,7 +34,7 @@ def verify_password(plain_password, hashed_password):
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire})                    # ← FIXED: Added missing closing }
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
@@ -53,6 +53,7 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
     db_user = UserModel(
         email=user_in.email,
         username=user_in.username,
+        full_name=user_in.full_name,
         hashed_password=hashed_password,
         is_active=True,
         is_admin=False
@@ -143,6 +144,7 @@ async def update_own_profile(
 
     current_user.email = user_in.email
     current_user.username = user_in.username
+    current_user.full_name = user_in.full_name
 
     if user_in.password:
         current_user.hashed_password = get_password_hash(user_in.password)

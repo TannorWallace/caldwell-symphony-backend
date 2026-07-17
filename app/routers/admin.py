@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Path, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
+from sqlalchemy.orm import selectinload
 from typing import List
 import uuid
 
@@ -12,7 +13,7 @@ from ..models.models import (
     Performance as PerformanceModel,
     Media as MediaModel
 )
-from ..schemas.user import UserCreate, User
+from ..schemas.user import UserCreate, User, UserUpdate, UserActivity
 from ..schemas.performance import Performance, PerformanceCreate, PerformanceUpdate
 from ..routers.users import get_password_hash
 from ..exceptions import NotFoundException, BadRequestException
@@ -24,6 +25,24 @@ router = APIRouter(
 )
 
 supabase_storage = SupabaseStorage()
+
+
+# ==================== ADMIN STATS ====================
+@router.get("/stats")
+async def get_admin_stats(
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Return basic stats for the admin dashboard"""
+    perf_count = await db.execute(select(func.count(PerformanceModel.id)))
+    user_count = await db.execute(select(func.count(UserModel.id)))
+    media_count = await db.execute(select(func.count(MediaModel.id)))
+
+    return {
+        "total_performances": perf_count.scalar_one(),
+        "total_users": user_count.scalar_one(),
+        "total_media": media_count.scalar_one(),
+    }
 
 
 # ==================== TEMPORARY BOOTSTRAP ENDPOINT ====================
@@ -49,6 +68,7 @@ async def bootstrap_first_admin(
     db_user = UserModel(
         email=user_in.email,
         username=user_in.username,
+        full_name=user_in.full_name,
         hashed_password=hashed_password,
         is_active=True,
         is_admin=True
@@ -86,7 +106,7 @@ async def get_user_by_id(
 @router.put("/users/{user_id}", response_model=User)
 async def update_user(
     user_id: int,
-    user_in: UserCreate,
+    user_in: UserUpdate,
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
@@ -95,14 +115,101 @@ async def update_user(
     if not user:
         raise NotFoundException("User not found")
 
-    user.email = user_in.email
-    user.username = user_in.username
-    if user_in.password:
-        user.hashed_password = get_password_hash(user_in.password)
+    update_data = user_in.model_dump(exclude_unset=True)
+
+    if "password" in update_data:
+        password = update_data.pop("password")
+        if password:
+            user.hashed_password = get_password_hash(password)
+
+    for field, value in update_data.items():
+        setattr(user, field, value)
 
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.get("/users/{user_id}/activity", response_model=UserActivity)
+async def get_user_activity(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Get a specific user's activity (comments + media) for admin view"""
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise NotFoundException("User not found")
+
+    # Comments (safe - no relationships loaded)
+    comments_result = await db.execute(
+        select(
+            CommentModel.id,
+            CommentModel.content,
+            CommentModel.user_id,
+            CommentModel.media_id,
+            CommentModel.parent_id,
+            CommentModel.is_approved,
+            CommentModel.is_deleted,
+            CommentModel.created_at,
+            UserModel.username
+        )
+        .join(UserModel, CommentModel.user_id == UserModel.id)
+        .where(
+            CommentModel.user_id == user_id,
+            CommentModel.is_deleted == False,
+            CommentModel.parent_id == None
+        )
+        .order_by(CommentModel.created_at.desc())
+        .limit(20)
+    )
+
+    recent_comments = []
+    for row in comments_result.all():
+        recent_comments.append({
+            "id": row.id,
+            "content": row.content,
+            "user_id": row.user_id,
+            "media_id": row.media_id,
+            "parent_id": row.parent_id,
+            "is_approved": row.is_approved,
+            "is_deleted": row.is_deleted,
+            "created_at": row.created_at,
+            "username": row.username,
+            "replies": []
+        })
+
+    # Media
+    media_result = await db.execute(
+        select(MediaModel)
+        .where(MediaModel.user_id == user_id)
+        .order_by(MediaModel.created_at.desc())
+    )
+    my_media = [
+        {
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "media_type": m.media_type,
+            "public_url": m.public_url,
+            "thumbnail_url": m.thumbnail_url,
+            "duration": m.duration,
+            "created_at": m.created_at,
+            "bucket": m.bucket,
+            "file_path": m.file_path,
+            "user_id": m.user_id,
+            "performance_id": m.performance_id,
+        }
+        for m in media_result.scalars().all()
+    ]
+
+    return {
+        "total_comments": len(recent_comments),
+        "total_media": len(my_media),
+        "recent_comments": recent_comments,
+        "my_media": my_media
+    }
 
 
 @router.post("/users/{user_id}/promote")
@@ -170,7 +277,6 @@ async def delete_comment(
     if not comment:
         raise NotFoundException("Comment not found")
 
-    # Collect all descendant reply IDs
     ids_to_delete = [comment_id]
     to_check = [comment_id]
 
@@ -193,6 +299,19 @@ async def delete_comment(
 
 
 # ==================== PERFORMANCE MANAGEMENT (Admin Only) ====================
+
+@router.get("/performances", response_model=List[Performance])
+async def list_all_performances_admin(
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Admin: Get ALL performances (published + drafts)"""
+    result = await db.execute(
+        select(PerformanceModel)
+        .order_by(PerformanceModel.created_at.desc())
+    )
+    return result.scalars().all()
+
 
 @router.post("/performances", response_model=Performance, status_code=status.HTTP_201_CREATED)
 async def create_performance(
@@ -262,14 +381,12 @@ async def upload_single_media(
 ):
     """Admin uploads a single image to Supabase and links it to a performance"""
 
-    # Check if performance exists
     perf_result = await db.execute(
         select(PerformanceModel).where(PerformanceModel.id == performance_id)
     )
     if not perf_result.scalar_one_or_none():
         raise NotFoundException("Performance not found")
 
-    # Generate unique file path
     file_ext = file.filename.split(".")[-1] if file.filename else "jpg"
     file_path = f"performances/{performance_id}/{uuid.uuid4()}.{file_ext}"
 
@@ -287,7 +404,6 @@ async def upload_single_media(
 
     public_url = supabase_storage.get_public_url("media", file_path)
 
-    # Save to database
     db_media = MediaModel(
         media_type="image",
         bucket="media",
@@ -315,7 +431,6 @@ async def upload_multiple_media(
 ):
     """Admin uploads multiple images to Supabase and links them to a performance"""
 
-    # Check if performance exists
     perf_result = await db.execute(
         select(PerformanceModel).where(PerformanceModel.id == performance_id)
     )
