@@ -31,20 +31,16 @@ app = FastAPI(
 
 # ===================== SECURITY MIDDLEWARE =====================
 
-# Parse comma-separated string into a proper list
-allowed_origins = [
-    origin.strip() 
-    for origin in settings.ALLOWED_ORIGINS.split(",") 
-    if origin.strip()
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "https://caldwell-symphony-frontend-taupe.vercel.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],                    # More permissive for development
-    expose_headers=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 if not settings.DEBUG:
