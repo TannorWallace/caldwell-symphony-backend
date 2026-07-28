@@ -16,11 +16,14 @@ class UserCreate(UserBase):
     password: str
 
 
-class UserUpdate(BaseModel):                     # ← NEW
+class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
+    is_member: Optional[bool] = None          # ← allow admin to set this
+    is_admin: Optional[bool] = None           # optional, if you want to control it from update too
+    is_active: Optional[bool] = None
 
 
 class User(UserBase):
@@ -29,6 +32,7 @@ class User(UserBase):
     id: int
     is_active: bool
     is_admin: bool
+    is_member: bool                           # ← NEW
     created_at: datetime
 
 
@@ -46,7 +50,7 @@ class UserActivity(BaseModel):
 
     total_comments: int
     total_media: int
-    recent_comments: List[CommentActivity]     # ← changed from Comment
+    recent_comments: List[CommentActivity]
     my_media: List[Media]
 
 

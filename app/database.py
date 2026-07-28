@@ -6,8 +6,8 @@ from .config import settings
 engine = create_async_engine(
     settings.SQLALCHEMY_DATABASE_URL,
     echo=False,
-    pool_pre_ping=True,                    # Helps with stale connections
-    connect_args={"statement_cache_size": 0}
+    pool_pre_ping=True,
+    connect_args={"statement_cache_size": 0},
 )
 
 AsyncSessionLocal = sessionmaker(

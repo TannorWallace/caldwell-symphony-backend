@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 import uuid
 
@@ -29,12 +29,10 @@ async def upload_media(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ):
-    # Validate file type
     allowed_types = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]
     if file.content_type not in allowed_types:
         raise BadRequestException("Unsupported file type. Allowed: JPEG, PNG, WEBP, MP4, WEBM")
 
-    # Validate performance exists if performance_id is provided
     if performance_id is not None:
         result = await db.execute(
             select(PerformanceModel).where(PerformanceModel.id == performance_id)
@@ -76,7 +74,6 @@ async def upload_media(
     await db.commit()
     await db.refresh(db_media)
 
-    # Attach username for the response (using the current user from auth)
     db_media.user_username = current_user.username
     return db_media
 
@@ -86,10 +83,21 @@ async def get_all_media(
     performance_id: Optional[int] = Query(None, description="Filter by performance ID"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Return all media items. Optionally filter by performance_id."""
+    """
+    Public media list.
+    Only returns media that is not tied to a performance,
+    OR is tied to a published performance.
+    """
     query = (
         select(MediaModel)
         .options(selectinload(MediaModel.user))
+        .outerjoin(PerformanceModel, MediaModel.performance_id == PerformanceModel.id)
+        .where(
+            or_(
+                MediaModel.performance_id == None,
+                PerformanceModel.is_published == True,
+            )
+        )
         .order_by(MediaModel.created_at.desc())
     )
 
@@ -99,7 +107,6 @@ async def get_all_media(
     result = await db.execute(query)
     media_list = result.scalars().all()
 
-    # Attach username from the loaded user relationship
     for media in media_list:
         if media.user:
             media.user_username = media.user.username

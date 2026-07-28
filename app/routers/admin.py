@@ -8,13 +8,14 @@ import uuid
 from ..dependencies import get_current_admin_user
 from ..database import get_db
 from ..models.models import (
-    User as UserModel, 
-    Comment as CommentModel, 
+    User as UserModel,
+    Comment as CommentModel,
     Performance as PerformanceModel,
-    Media as MediaModel
+    Media as MediaModel,
+    MemberMessage as MemberMessageModel,
 )
 from ..schemas.user import UserCreate, User, UserUpdate, UserActivity
-from ..schemas.performance import Performance, PerformanceCreate, PerformanceUpdate
+from ..schemas.performance import Performance, PerformanceCreate, PerformanceDetail, PerformanceUpdate
 from ..routers.users import get_password_hash
 from ..exceptions import NotFoundException, BadRequestException
 from ..supabase import SupabaseStorage
@@ -71,7 +72,8 @@ async def bootstrap_first_admin(
         full_name=user_in.full_name,
         hashed_password=hashed_password,
         is_active=True,
-        is_admin=True
+        is_admin=True,
+        is_member=False,
     )
 
     db.add(db_user)
@@ -142,7 +144,6 @@ async def get_user_activity(
     if not user:
         raise NotFoundException("User not found")
 
-    # Comments (safe - no relationships loaded)
     comments_result = await db.execute(
         select(
             CommentModel.id,
@@ -180,7 +181,6 @@ async def get_user_activity(
             "replies": []
         })
 
-    # Media
     media_result = await db.execute(
         select(MediaModel)
         .where(MediaModel.user_id == user_id)
@@ -212,12 +212,17 @@ async def get_user_activity(
     }
 
 
+# ==================== ROLE: ADMIN ====================
 @router.post("/users/{user_id}/promote")
 async def promote_to_admin(
     user_id: int,
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
+    """
+    Promote to Admin.
+    Clears member flag so role is exclusive: Admin only.
+    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -226,7 +231,9 @@ async def promote_to_admin(
         raise BadRequestException("User is already an admin")
 
     user.is_admin = True
+    user.is_member = False
     await db.commit()
+    await db.refresh(user)
     return {"message": "User has been promoted to admin"}
 
 
@@ -236,6 +243,10 @@ async def demote_from_admin(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
+    """
+    Demote from Admin.
+    Leaves is_member as-is so they can land as Member or User.
+    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -245,7 +256,55 @@ async def demote_from_admin(
 
     user.is_admin = False
     await db.commit()
-    return {"message": "User has been demoted"}
+    await db.refresh(user)
+    return {"message": "User has been demoted from admin"}
+
+
+# ==================== ROLE: MEMBER ====================
+@router.post("/users/{user_id}/promote-member")
+async def promote_to_member(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """
+    Set role to Member only.
+    Clears admin so role is exclusive: Member only.
+    (Use this to step an Admin down to Member in one action.)
+    """
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise NotFoundException("User not found")
+
+    user.is_admin = False
+    user.is_member = True
+    await db.commit()
+    await db.refresh(user)
+    return {"message": "User has been set to member"}
+
+
+@router.post("/users/{user_id}/demote-member")
+async def demote_from_member(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """
+    Remove member status → User.
+    Does not touch is_admin (admins shouldn't also be members).
+    """
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise NotFoundException("User not found")
+    if not user.is_member:
+        raise BadRequestException("User is not a member")
+
+    user.is_member = False
+    await db.commit()
+    await db.refresh(user)
+    return {"message": "User has been demoted from member"}
 
 
 @router.delete("/users/{user_id}")
@@ -295,7 +354,9 @@ async def delete_comment(
     )
     await db.commit()
 
-    return {"message": f"Comment {comment_id} and all {len(ids_to_delete)-1} replies have been permanently deleted"}
+    return {
+        "message": f"Comment {comment_id} and all {len(ids_to_delete)-1} replies have been permanently deleted"
+    }
 
 
 # ==================== PERFORMANCE MANAGEMENT (Admin Only) ====================
@@ -311,6 +372,37 @@ async def list_all_performances_admin(
         .order_by(PerformanceModel.created_at.desc())
     )
     return result.scalars().all()
+
+
+@router.get("/performances/{performance_id}", response_model=PerformanceDetail)
+async def get_performance_admin(
+    performance_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """Admin: get any performance (published or draft) with media"""
+    result = await db.execute(
+        select(PerformanceModel)
+        .options(
+            selectinload(PerformanceModel.media).selectinload(MediaModel.user),
+            selectinload(PerformanceModel.cover_media),
+        )
+        .where(PerformanceModel.id == performance_id)
+    )
+    performance = result.scalar_one_or_none()
+    if not performance:
+        raise NotFoundException("Performance not found")
+
+    for media in performance.media:
+        if media.user:
+            media.user_username = media.user.username
+
+    if performance.cover_media:
+        performance.cover_image_url = performance.cover_media.public_url
+    else:
+        performance.cover_image_url = None
+
+    return performance
 
 
 @router.post("/performances", response_model=Performance, status_code=status.HTTP_201_CREATED)
@@ -358,12 +450,26 @@ async def delete_performance(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
-    """Admin deletes a performance"""
-    result = await db.execute(select(PerformanceModel).where(PerformanceModel.id == performance_id))
+    """Admin hard-deletes a performance and its media (breaks circular cover_media FK)."""
+    result = await db.execute(
+        select(PerformanceModel)
+        .options(selectinload(PerformanceModel.media))
+        .where(PerformanceModel.id == performance_id)
+    )
     performance = result.scalar_one_or_none()
     if not performance:
         raise NotFoundException("Performance not found")
 
+    # 1) Break cover_media circular reference
+    performance.cover_media_id = None
+    await db.flush()
+
+    # 2) Delete all media for this performance
+    for media_item in list(performance.media):
+        await db.delete(media_item)
+    await db.flush()
+
+    # 3) Delete the performance
     await db.delete(performance)
     await db.commit()
     return None
@@ -475,4 +581,44 @@ async def upload_multiple_media(
     return {
         "message": f"Successfully uploaded {uploaded_count} images",
         "performance_id": performance_id
+    }
+
+
+# ==================== ADMIN MEMBER MESSAGE HARD DELETE ====================
+@router.delete("/member-messages/{message_id}")
+async def hard_delete_member_message(
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user)
+):
+    """
+    Permanently delete a member message AND all its replies (hard delete with cascade).
+    """
+    result = await db.execute(
+        select(MemberMessageModel).where(MemberMessageModel.id == message_id)
+    )
+    message = result.scalar_one_or_none()
+    if not message:
+        raise NotFoundException("Member message not found")
+
+    ids_to_delete = [message_id]
+    to_check = [message_id]
+
+    while to_check:
+        current = to_check.pop()
+        child_result = await db.execute(
+            select(MemberMessageModel.id).where(MemberMessageModel.parent_id == current)
+        )
+        children = child_result.scalars().all()
+        for child_id in children:
+            ids_to_delete.append(child_id)
+            to_check.append(child_id)
+
+    await db.execute(
+        delete(MemberMessageModel).where(MemberMessageModel.id.in_(ids_to_delete))
+    )
+    await db.commit()
+
+    return {
+        "message": f"Member message {message_id} and all {len(ids_to_delete)-1} replies have been permanently deleted"
     }

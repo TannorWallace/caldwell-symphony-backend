@@ -41,3 +41,10 @@ async def get_current_admin_user(current_user: UserModel = Depends(get_current_a
     if not current_user.is_admin:
         raise ForbiddenException("Not enough permissions - Admin only")
     return current_user
+
+
+async def get_current_member_user(current_user: UserModel = Depends(get_current_active_user)):
+    """Allow access if the user is a member OR an admin"""
+    if not (current_user.is_member or current_user.is_admin):
+        raise ForbiddenException("Not enough permissions - Members only")
+    return current_user

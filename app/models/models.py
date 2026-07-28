@@ -24,14 +24,22 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_member: Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    # Relationships
-    comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
-    media: Mapped[list["Media"]] = relationship("Media", back_populates="user", cascade="all, delete-orphan")
+    comments: Mapped[list["Comment"]] = relationship(
+        "Comment", back_populates="user", cascade="all, delete-orphan"
+    )
+    media: Mapped[list["Media"]] = relationship(
+        "Media", back_populates="user", cascade="all, delete-orphan"
+    )
+    member_messages: Mapped[list["MemberMessage"]] = relationship(
+        "MemberMessage", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
-# ==================== COMMENT MODEL (with threaded replies) ====================
+# ==================== COMMENT MODEL ====================
 class Comment(Base):
     __tablename__ = "comments"
 
@@ -44,12 +52,14 @@ class Comment(Base):
     media_id: Mapped[int] = mapped_column(Integer, ForeignKey("media.id"), nullable=False)
     media: Mapped["Media"] = relationship("Media", back_populates="comments")
 
-    # Threaded replies
     parent_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("comments.id"), nullable=True)
-    parent: Mapped["Comment | None"] = relationship("Comment", remote_side=[id], back_populates="replies")
-    replies: Mapped[list["Comment"]] = relationship("Comment", back_populates="parent", cascade="all, delete-orphan")
+    parent: Mapped["Comment | None"] = relationship(
+        "Comment", remote_side=[id], back_populates="replies"
+    )
+    replies: Mapped[list["Comment"]] = relationship(
+        "Comment", back_populates="parent", cascade="all, delete-orphan"
+    )
 
-    # Admin moderation
     is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -63,12 +73,10 @@ class Media(Base):
 
     media_type: Mapped[str] = mapped_column(String(10), nullable=False)
 
-    # Supabase Storage fields
     bucket: Mapped[str] = mapped_column(String(100), nullable=False, default="media")
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     public_url: Mapped[str] = mapped_column(String(500), nullable=False)
 
-    # Extra metadata
     duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
@@ -77,16 +85,14 @@ class Media(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    # Who uploaded this media
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     user: Mapped["User"] = relationship("User", back_populates="media")
 
-    # Link to Performance (this media belongs to a performance)
     performance_id: Mapped[Optional[int]] = mapped_column(ForeignKey("performances.id"), nullable=True)
     performance: Mapped["Performance | None"] = relationship(
         "Performance",
         back_populates="media",
-        foreign_keys="[Media.performance_id]"   # ← Explicit foreign key
+        foreign_keys="[Media.performance_id]"
     )
 
     comments: Mapped[list["Comment"]] = relationship(
@@ -104,7 +110,6 @@ class Performance(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Cover image is now linked via media table
     cover_media_id: Mapped[Optional[int]] = mapped_column(ForeignKey("media.id"), nullable=True)
     cover_media: Mapped["Media | None"] = relationship(
         "Media",
@@ -117,12 +122,90 @@ class Performance(Base):
     creator: Mapped["User"] = relationship("User")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 
-    # All media items belonging to this performance
     media: Mapped[list["Media"]] = relationship(
         "Media",
         back_populates="performance",
         cascade="all, delete-orphan",
-        foreign_keys="[Media.performance_id]"   # ← FIXED: Explicit foreign key
+        foreign_keys="[Media.performance_id]"
     )
+    # NO sheet_music_pieces relationship
+
+
+# ==================== MEMBER MESSAGE MODEL ====================
+class MemberMessage(Base):
+    __tablename__ = "member_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    user: Mapped["User"] = relationship("User", back_populates="member_messages")
+
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("member_messages.id"), nullable=True
+    )
+    parent: Mapped["MemberMessage | None"] = relationship(
+        "MemberMessage",
+        remote_side=[id],
+        back_populates="replies"
+    )
+    replies: Mapped[list["MemberMessage"]] = relationship(
+        "MemberMessage",
+        back_populates="parent",
+        cascade="all, delete-orphan"
+    )
+
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# On Performance — REMOVE sheet_music_pieces relationship entirely
+
+# ==================== SHEET MUSIC MODELS ====================
+
+class SheetMusicPiece(Base):
+    """Standalone sheet music package. Not tied to public performances."""
+    __tablename__ = "sheet_music_pieces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    parts: Mapped[list["SheetMusicPart"]] = relationship(
+        "SheetMusicPart",
+        back_populates="piece",
+        cascade="all, delete-orphan"
+    )
+
+
+class SheetMusicPart(Base):
+    """Individual instrument PDF for a piece."""
+    __tablename__ = "sheet_music_parts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    instrument: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    bucket: Mapped[str] = mapped_column(String(100), nullable=False, default="sheet-music")
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    public_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    piece_id: Mapped[int] = mapped_column(ForeignKey("sheet_music_pieces.id"), nullable=False)
+    piece: Mapped["SheetMusicPiece"] = relationship("SheetMusicPiece", back_populates="parts")
+
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    uploader: Mapped["User"] = relationship("User")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
