@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Path, status, UploadFile, File, Form
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
@@ -583,6 +584,80 @@ async def upload_multiple_media(
         "performance_id": performance_id
     }
 
+class BulkMediaDelete(BaseModel):
+    media_ids: List[int] = Field(..., min_length=1)
+
+
+async def _clear_cover_if_needed(db: AsyncSession, media: MediaModel) -> None:
+    """If this media is a performance cover, clear the FK first."""
+    if not media.performance_id:
+        return
+
+    perf_result = await db.execute(
+        select(PerformanceModel).where(PerformanceModel.id == media.performance_id)
+    )
+    performance = perf_result.scalar_one_or_none()
+    if performance and performance.cover_media_id == media.id:
+        performance.cover_media_id = None
+        await db.flush()
+
+
+async def _best_effort_storage_delete(media: MediaModel) -> None:
+    """Storage failure must not block DB delete."""
+    if not media.bucket or not media.file_path:
+        return
+    try:
+        await supabase_storage.delete_file(media.bucket, media.file_path)
+    except Exception:
+        pass
+
+
+@router.delete("/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_media(
+    media_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    """Hard-delete one media item (DB + best-effort Storage)."""
+    result = await db.execute(select(MediaModel).where(MediaModel.id == media_id))
+    media = result.scalar_one_or_none()
+    if not media:
+        raise NotFoundException("Media not found")
+
+    await _clear_cover_if_needed(db, media)
+    await _best_effort_storage_delete(media)
+    await db.delete(media)
+    await db.commit()
+    return None
+
+
+@router.post("/media/bulk-delete")
+async def bulk_delete_media(
+    body: BulkMediaDelete,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    """Hard-delete many media items in one request."""
+    result = await db.execute(
+        select(MediaModel).where(MediaModel.id.in_(body.media_ids))
+    )
+    items = list(result.scalars().all())
+    if not items:
+        raise NotFoundException("No matching media found")
+
+    deleted = 0
+    for media in items:
+        await _clear_cover_if_needed(db, media)
+        await _best_effort_storage_delete(media)
+        await db.delete(media)
+        deleted += 1
+
+    await db.commit()
+    return {
+        "message": f"Deleted {deleted} media item(s)",
+        "deleted": deleted,
+        "requested": len(body.media_ids),
+    }
 
 # ==================== ADMIN MEMBER MESSAGE HARD DELETE ====================
 @router.delete("/member-messages/{message_id}")
