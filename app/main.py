@@ -39,7 +39,9 @@ app.add_middleware(
     allow_origins=[
         "https://caldwell-symphony-frontend-taupe.vercel.app",
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -90,6 +92,7 @@ app.include_router(performances_router)
 app.include_router(member_messages_router)
 app.include_router(sheet_music_router)
 app.include_router(announcements_router)
+
 
 @app.get("/")
 async def root():
