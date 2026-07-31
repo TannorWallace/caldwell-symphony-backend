@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, DateTime, func
+from sqlalchemy import String, Text, Boolean, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 from datetime import datetime
@@ -163,8 +163,6 @@ class MemberMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
-# On Performance — REMOVE sheet_music_pieces relationship entirely
-
 # ==================== SHEET MUSIC MODELS ====================
 
 class SheetMusicPiece(Base):
@@ -185,7 +183,7 @@ class SheetMusicPiece(Base):
         cascade="all, delete-orphan"
     )
 
-
+#====================================SHEET MUSIC PART MODEL===================================
 class SheetMusicPart(Base):
     """Individual instrument PDF for a piece."""
     __tablename__ = "sheet_music_parts"
@@ -209,3 +207,22 @@ class SheetMusicPart(Base):
     uploader: Mapped["User"] = relationship("User")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+#====================================ANNOUNCEMENTS============================================
+#
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    creator: Mapped["User | None"] = relationship("User")
