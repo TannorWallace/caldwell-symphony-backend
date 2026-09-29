@@ -132,7 +132,6 @@ class Performance(Base):
         cascade="all, delete-orphan",
         foreign_keys="[Media.performance_id]"
     )
-    # NO sheet_music_pieces relationship
 
 
 # ==================== MEMBER MESSAGE MODEL ====================
@@ -183,7 +182,7 @@ class SheetMusicPiece(Base):
         cascade="all, delete-orphan"
     )
 
-#====================================SHEET MUSIC PART MODEL===================================
+
 class SheetMusicPart(Base):
     """Individual instrument PDF for a piece."""
     __tablename__ = "sheet_music_parts"
@@ -208,8 +207,9 @@ class SheetMusicPart(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+
 #====================================ANNOUNCEMENTS============================================
-#
+
 class Announcement(Base):
     __tablename__ = "announcements"
 
@@ -223,6 +223,39 @@ class Announcement(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    creator: Mapped["User | None"] = relationship("User")
+
+
+#====================================EVENTS============================================
+
+class Event(Base):
+    """Public concert / group event listing (not the performance gallery)."""
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    price: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    group_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_by: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     creator: Mapped["User | None"] = relationship("User")

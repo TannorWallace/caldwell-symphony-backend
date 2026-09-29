@@ -1,20 +1,19 @@
 from jose import jwt
-from sqlalchemy import select
+from sqlalchemy import select, func
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import selectinload
 
 from ..database import get_db
 from ..config import settings
 from ..models.models import User as UserModel, Comment as CommentModel, Media as MediaModel
 from ..schemas.user import UserCreate, User, Token, UserDelete, UserActivity
-from ..schemas.comment import Comment
-from ..schemas.media import Media
 from ..dependencies import get_current_active_user
-from ..exceptions import BadRequestException, UnauthorizedException, NotFoundException
+from ..exceptions import BadRequestException, UnauthorizedException
+from ..rate_limit import rate_limit
 
 router = APIRouter(
     prefix="/api/v1/users",
@@ -23,23 +22,32 @@ router = APIRouter(
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def get_password_hash(password: str) -> str:
     if len(password) > 72:
         password = password[:72]
     return pwd_context.hash(password)
 
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
 
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})                    # ← FIXED: Added missing closing }
+    to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
-async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register_user(
+    user_in: UserCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    rate_limit(request, key="register", max_hits=5, window_sec=60)
+
     result = await db.execute(
         select(UserModel).where(
             (UserModel.email == user_in.email) | (UserModel.username == user_in.username)
@@ -56,7 +64,8 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
         full_name=user_in.full_name,
         hashed_password=hashed_password,
         is_active=True,
-        is_admin=False
+        is_admin=False,
+        is_member=False,
     )
 
     db.add(db_user)
@@ -67,9 +76,12 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
 
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
+    rate_limit(request, key="login", max_hits=8, window_sec=60)
+
     result = await db.execute(
         select(UserModel).where(UserModel.username == form_data.username)
     )
@@ -110,6 +122,7 @@ async def get_my_activity(
     for comment in recent_comments:
         if comment.user:
             comment.username = comment.user.username
+        comment.__dict__["replies"] = []
 
     media_result = await db.execute(
         select(MediaModel)
@@ -134,7 +147,7 @@ async def update_own_profile(
 ):
     result = await db.execute(
         select(UserModel).where(
-            (UserModel.id != current_user.id) & 
+            (UserModel.id != current_user.id) &
             ((UserModel.email == user_in.email) | (UserModel.username == user_in.username))
         )
     )
@@ -163,6 +176,13 @@ async def delete_own_account(
     if not verify_password(delete_data.password, current_user.hashed_password):
         await db.rollback()
         raise UnauthorizedException("Incorrect password")
+
+    if current_user.is_admin:
+        admin_count = await db.execute(
+            select(func.count(UserModel.id)).where(UserModel.is_admin == True)
+        )
+        if admin_count.scalar_one() <= 1:
+            raise BadRequestException("Cannot delete the last admin account")
 
     await db.delete(current_user)
     await db.commit()

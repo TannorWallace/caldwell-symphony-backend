@@ -3,8 +3,9 @@ from fastapi import HTTPException, status
 
 class APIException(HTTPException):
     """Base exception for all API errors."""
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(status_code=status_code, detail=detail)
+
+    def __init__(self, status_code: int, detail: str, headers: dict | None = None):
+        super().__init__(status_code=status_code, detail=detail, headers=headers)
 
 
 class NotFoundException(APIException):
@@ -34,3 +35,8 @@ class BadRequestException(APIException):
 class ConflictException(APIException):
     def __init__(self, detail: str = "Conflict with existing resource"):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class TooManyRequestsException(APIException):
+    def __init__(self, detail: str = "Too many requests. Please try again later."):
+        super().__init__(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail)

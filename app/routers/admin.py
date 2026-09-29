@@ -47,40 +47,40 @@ async def get_admin_stats(
     }
 
 
-# ==================== TEMPORARY BOOTSTRAP ENDPOINT ====================
-@router.post("/bootstrap-first-admin", response_model=User, status_code=status.HTTP_201_CREATED)
-async def bootstrap_first_admin(
-    user_in: UserCreate,
-    db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(select(UserModel).where(UserModel.is_admin == True))
-    if result.scalar_one_or_none():
-        raise BadRequestException("An admin user already exists.")
+# # ==================== TEMPORARY BOOTSTRAP ENDPOINT ====================
+# @router.post("/bootstrap-first-admin", response_model=User, status_code=status.HTTP_201_CREATED)
+# async def bootstrap_first_admin(
+#     user_in: UserCreate,
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     result = await db.execute(select(UserModel).where(UserModel.is_admin == True))
+#     if result.scalar_one_or_none():
+#         raise BadRequestException("An admin user already exists.")
 
-    result = await db.execute(
-        select(UserModel).where(
-            (UserModel.email == user_in.email) | (UserModel.username == user_in.username)
-        )
-    )
-    if result.scalar_one_or_none():
-        raise BadRequestException("Email or username already registered")
+#     result = await db.execute(
+#         select(UserModel).where(
+#             (UserModel.email == user_in.email) | (UserModel.username == user_in.username)
+#         )
+#     )
+#     if result.scalar_one_or_none():
+#         raise BadRequestException("Email or username already registered")
 
-    hashed_password = get_password_hash(user_in.password)
+#     hashed_password = get_password_hash(user_in.password)
 
-    db_user = UserModel(
-        email=user_in.email,
-        username=user_in.username,
-        full_name=user_in.full_name,
-        hashed_password=hashed_password,
-        is_active=True,
-        is_admin=True,
-        is_member=False,
-    )
+#     db_user = UserModel(
+#         email=user_in.email,
+#         username=user_in.username,
+#         full_name=user_in.full_name,
+#         hashed_password=hashed_password,
+#         is_active=True,
+#         is_admin=True,
+#         is_member=False,
+#     )
 
-    db.add(db_user)
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
+#     db.add(db_user)
+#     await db.commit()
+#     await db.refresh(db_user)
+#     return db_user
 
 
 # ==================== USER MANAGEMENT ====================

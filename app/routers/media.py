@@ -7,10 +7,11 @@ import uuid
 
 from ..database import get_db
 from ..models.models import Media as MediaModel, User as UserModel, Performance as PerformanceModel
-from ..schemas.media import MediaCreate, Media
+from ..schemas.media import Media
 from ..supabase import SupabaseStorage
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_admin_user
 from ..exceptions import BadRequestException, NotFoundException
+from ..uploads import read_gallery_file
 
 router = APIRouter(
     prefix="/api/v1/media",
@@ -27,11 +28,10 @@ async def upload_media(
     description: Optional[str] = Form(None),
     performance_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: UserModel = Depends(get_current_active_user)
+    current_user: UserModel = Depends(get_current_admin_user),
 ):
-    allowed_types = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]
-    if file.content_type not in allowed_types:
-        raise BadRequestException("Unsupported file type. Allowed: JPEG, PNG, WEBP, MP4, WEBM")
+    """Admin-only. Gallery files for performances should go through /api/v1/admin/media."""
+    file_bytes, media_type = await read_gallery_file(file)
 
     if performance_id is not None:
         result = await db.execute(
@@ -40,19 +40,15 @@ async def upload_media(
         if not result.scalar_one_or_none():
             raise NotFoundException("Performance not found")
 
-    media_type = "image" if file.content_type.startswith("image") else "video"
-
     file_ext = file.filename.split(".")[-1] if file.filename else "bin"
     file_path = f"{uuid.uuid4()}.{file_ext}"
-
-    file_bytes = await file.read()
 
     try:
         await supabase_storage.upload_file(
             bucket="media",
             file_path=file_path,
             file_bytes=file_bytes,
-            content_type=file.content_type
+            content_type=file.content_type or "application/octet-stream",
         )
     except Exception as e:
         raise BadRequestException(f"Upload failed: {str(e)}")

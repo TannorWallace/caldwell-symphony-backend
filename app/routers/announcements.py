@@ -10,11 +10,20 @@ from app.dependencies import get_current_admin_user
 from app.models.models import Announcement, User
 from app.schemas.announcement import AnnouncementOut, AnnouncementUpdate
 from app.supabase import supabase_storage
+from app.uploads import read_flyer_file
 
 router = APIRouter(prefix="/api/v1/announcements", tags=["announcements"])
 
-# Use the same public bucket as your media uploads if different
 ANNOUNCEMENTS_BUCKET = "media"
+
+
+def _object_path_from_public_url(url: str | None, bucket: str) -> str | None:
+    if not url:
+        return None
+    marker = f"/object/public/{bucket}/"
+    if marker not in url:
+        return None
+    return url.split(marker, 1)[1].split("?")[0]
 
 
 @router.get("/", response_model=list[AnnouncementOut])
@@ -54,9 +63,9 @@ async def create_announcement(
     image_url = None
 
     if file is not None and file.filename:
+        file_bytes = await read_flyer_file(file)
         ext = Path(file.filename).suffix.lower() or ".jpg"
         object_path = f"announcements/{uuid.uuid4().hex}{ext}"
-        file_bytes = await file.read()
         content_type = file.content_type or "application/octet-stream"
 
         await supabase_storage.upload_file(
@@ -123,6 +132,13 @@ async def delete_announcement(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Announcement not found")
+
+    object_path = _object_path_from_public_url(item.image_url, ANNOUNCEMENTS_BUCKET)
+    if object_path:
+        try:
+            await supabase_storage.delete_file(ANNOUNCEMENTS_BUCKET, object_path)
+        except Exception:
+            pass
 
     await db.delete(item)
     await db.commit()

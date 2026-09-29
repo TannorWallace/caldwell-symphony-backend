@@ -17,12 +17,12 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
+    """Profile fields only. Roles go through promote/demote endpoints."""
+
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
-    is_member: Optional[bool] = None          # ← allow admin to set this
-    is_admin: Optional[bool] = None           # optional, if you want to control it from update too
     is_active: Optional[bool] = None
 
 
@@ -32,7 +32,7 @@ class User(UserBase):
     id: int
     is_active: bool
     is_admin: bool
-    is_member: bool                           # ← NEW
+    is_member: bool
     created_at: datetime
 
 
