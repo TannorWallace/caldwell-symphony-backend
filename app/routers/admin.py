@@ -3,17 +3,21 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
+from sqlalchemy import select, delete, func, update
 from typing import List
 import uuid
 
 from ..dependencies import get_current_admin_user
 from ..database import get_db
 from ..models.models import (
-    User as UserModel,
+User as UserModel,
     Comment as CommentModel,
     Performance as PerformanceModel,
     Media as MediaModel,
     MemberMessage as MemberMessageModel,
+    SheetMusicPart as SheetMusicPartModel,
+    Announcement as AnnouncementModel,
+    Event as EventModel,
 )
 from ..schemas.user import UserCreate, User, UserUpdate, UserActivity
 from ..schemas.performance import Performance, PerformanceCreate, PerformanceDetail, PerformanceUpdate
@@ -319,10 +323,50 @@ async def delete_user(
     if not user:
         raise NotFoundException("User not found")
 
+    if user.id == current_admin.id:
+        raise BadRequestException("You cannot delete your own account")
+
+    owner_id = current_admin.id
+
+    await db.execute(
+        update(PerformanceModel)
+        .where(PerformanceModel.created_by == user_id)
+        .values(created_by=owner_id)
+    )
+    await db.execute(
+        update(MediaModel)
+        .where(MediaModel.user_id == user_id)
+        .values(user_id=owner_id)
+    )
+    await db.execute(
+        update(CommentModel)
+        .where(CommentModel.user_id == user_id)
+        .values(user_id=owner_id)
+    )
+    await db.execute(
+        update(MemberMessageModel)
+        .where(MemberMessageModel.user_id == user_id)
+        .values(user_id=owner_id)
+    )
+    await db.execute(
+        update(SheetMusicPartModel)
+        .where(SheetMusicPartModel.uploaded_by == user_id)
+        .values(uploaded_by=owner_id)
+    )
+    await db.execute(
+        update(AnnouncementModel)
+        .where(AnnouncementModel.created_by == user_id)
+        .values(created_by=None)
+    )
+    await db.execute(
+        update(EventModel)
+        .where(EventModel.created_by == user_id)
+        .values(created_by=None)
+    )
+
     await db.delete(user)
     await db.commit()
     return {"message": f"User {user_id} has been deleted"}
-
 
 # ==================== ADMIN COMMENT HARD DELETE WITH CASCADE ====================
 @router.delete("/comments/{comment_id}")
