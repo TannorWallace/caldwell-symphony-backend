@@ -38,6 +38,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://www.maccidaho.org",
+        "https://maccidaho.org",
         "https://caldwell-symphony-frontend-taupe.vercel.app",
         "http://localhost:3000",
         "http://localhost:3001",
