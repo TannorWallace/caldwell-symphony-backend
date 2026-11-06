@@ -49,8 +49,14 @@ async def list_published_announcements(
         .order_by(Announcement.created_at.desc())
         .limit(limit)
     )
+
     if group_slug:
+        # Ensemble portal: only this group's announcements
         query = query.where(Announcement.group_slug == group_slug)
+    else:
+        # Homepage: only announcements with no group_slug
+        query = query.where(Announcement.group_slug.is_(None))
+
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -96,6 +102,7 @@ async def create_announcement(
     await db.commit()
     await db.refresh(item)
     return item
+
 
 @router.put("/{announcement_id}", response_model=AnnouncementOut)
 async def update_announcement(
