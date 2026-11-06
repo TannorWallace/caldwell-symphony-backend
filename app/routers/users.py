@@ -210,30 +210,10 @@ async def forgot_password(
 
     reset_url = f"{settings.FRONTEND_URL}/login/reset-password?token={token}"
 
-    # Send the email via EmailJS when credentials are set
-    if settings.EMAILJS_SERVICE_ID and settings.EMAILJS_TEMPLATE_ID and settings.EMAILJS_PUBLIC_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
-                    "https://api.emailjs.com/api/v1.0/email/send",
-                    json={
-                        "service_id": settings.EMAILJS_SERVICE_ID,
-                        "template_id": settings.EMAILJS_TEMPLATE_ID,
-                        "user_id": settings.EMAILJS_PUBLIC_KEY,
-                        "template_params": {
-                            "to_email": user.email,
-                            "reset_url": reset_url,
-                        },
-                    },
-                )
-        except Exception:
-            # Do not fail the request if email delivery has a problem
-            pass
-
-    response = {"message": "If that email exists, a reset link was sent."}
-    if settings.DEBUG:
-        response["reset_url"] = reset_url
-    return response
+    return {
+        "message": "If that email exists, a reset link was sent.",
+        "reset_url": reset_url,
+    }
 
 
 @router.post("/reset-password")
