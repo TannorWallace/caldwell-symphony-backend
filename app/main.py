@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 
 from .routers.users import router as users_router
@@ -43,11 +42,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if not settings.DEBUG:
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=settings.allowed_hosts_list,
-    )
+# TrustedHostMiddleware is disabled.
+# Render's internal health check and some request Host headers
+# were not matching the allowed list and returning 400.
+# Re-enable later with a broader or environment-specific list if needed.
+# if not settings.DEBUG:
+#     from fastapi.middleware.trustedhost import TrustedHostMiddleware
+#     app.add_middleware(
+#         TrustedHostMiddleware,
+#         allowed_hosts=settings.allowed_hosts_list,
+#     )
 
 
 @app.middleware("http")
