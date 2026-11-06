@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
 
-    #Email JS
+    # EmailJS
     EMAILJS_SERVICE_ID: str = ""
     EMAILJS_TEMPLATE_ID: str = ""
     EMAILJS_PUBLIC_KEY: str = ""
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # ===================== SECURITY / ENVIRONMENT =====================
     DEBUG: bool = Field(default=True)
 
-    # Stored as comma-separated strings in .env
+    # Stored as comma-separated strings in .env / Render
     ALLOWED_ORIGINS: str = Field(
         default="http://localhost:3000,http://127.0.0.1:3000"
     )
@@ -41,6 +41,14 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=True,
     )
+
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
 
 
 settings = Settings()
