@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import selectinload
-
+import secrets
+import httpx
 from ..database import get_db
 from ..config import settings
 from ..models.models import User as UserModel, Comment as CommentModel, Media as MediaModel
-from ..schemas.user import UserCreate, User, Token, UserDelete, UserActivity
+from ..schemas.user import ForgotPasswordRequest, ResetPasswordRequest, UserCreate, User, Token, UserDelete, UserActivity
 from ..dependencies import get_current_active_user
 from ..exceptions import BadRequestException, UnauthorizedException
 from ..rate_limit import rate_limit
@@ -188,3 +189,67 @@ async def delete_own_account(
     await db.commit()
 
     return {"message": "Your account has been successfully deleted."}
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    rate_limit(request, key="forgot", max_hits=5, window_sec=300)
+    result = await db.execute(select(UserModel).where(UserModel.email == body.email))
+    user = result.scalar_one_or_none()
+    if not user:
+        return {"message": "If that email exists, a reset link was sent."}
+
+    token = secrets.token_urlsafe(32)
+    user.reset_token = token
+    user.reset_token_expires = datetime.now(timezone.utc) + timedelta(minutes=30)
+    await db.commit()
+
+    reset_url = f"{settings.FRONTEND_URL}/login/reset-password?token={token}"
+
+    # Send the email via EmailJS when credentials are set
+    if settings.EMAILJS_SERVICE_ID and settings.EMAILJS_TEMPLATE_ID and settings.EMAILJS_PUBLIC_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    "https://api.emailjs.com/api/v1.0/email/send",
+                    json={
+                        "service_id": settings.EMAILJS_SERVICE_ID,
+                        "template_id": settings.EMAILJS_TEMPLATE_ID,
+                        "user_id": settings.EMAILJS_PUBLIC_KEY,
+                        "template_params": {
+                            "to_email": user.email,
+                            "reset_url": reset_url,
+                        },
+                    },
+                )
+        except Exception:
+            # Do not fail the request if email delivery has a problem
+            pass
+
+    response = {"message": "If that email exists, a reset link was sent."}
+    if settings.DEBUG:
+        response["reset_url"] = reset_url
+    return response
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(UserModel).where(UserModel.reset_token == body.token)
+    )
+    user = result.scalar_one_or_none()
+    if not user or not user.reset_token_expires or user.reset_token_expires < datetime.now(timezone.utc):
+        raise BadRequestException("Invalid or expired reset link")
+
+    user.hashed_password = get_password_hash(body.password)
+    user.reset_token = None
+    user.reset_token_expires = None
+    await db.commit()
+    return {"message": "Password updated. You can log in now."}

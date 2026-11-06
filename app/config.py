@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
 
+    #Email JS
+    EMAILJS_SERVICE_ID: str = ""
+    EMAILJS_TEMPLATE_ID: str = ""
+    EMAILJS_PUBLIC_KEY: str = ""
+
     # ===================== SECURITY / ENVIRONMENT =====================
     DEBUG: bool = Field(default=True)
 
@@ -28,6 +33,8 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: str = Field(
         default="localhost,127.0.0.1"
     )
+
+    FRONTEND_URL: str = Field(default="http://localhost:3000")
 
     model_config = SettingsConfigDict(
         env_file=".env",

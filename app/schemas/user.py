@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
+
 from .comment import Comment, CommentActivity
 from .media import Media
 
@@ -61,3 +62,10 @@ class PaginatedResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
