@@ -12,6 +12,7 @@ from ..models.models import (
     SheetMusicPiece as PieceModel,
     SheetMusicPart as PartModel,
     User as UserModel,
+    UserEnsemble,
 )
 from ..schemas.sheet_music import (
     SheetMusicPiece,
@@ -64,14 +65,24 @@ async def list_pieces(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_member_user),
 ):
-    """Members: published only. Admins: all."""
+    """Members: published + assigned ensemble only. Admins: all."""
     query = (
         select(PieceModel)
         .options(selectinload(PieceModel.parts))
         .order_by(PieceModel.created_at.desc())
     )
+
     if not current_user.is_admin:
         query = query.where(PieceModel.is_published == True)
+
+        assigned = await db.execute(
+            select(UserEnsemble.group_slug).where(UserEnsemble.user_id == current_user.id)
+        )
+        slugs = [row[0] for row in assigned.all()]
+        if slugs:
+            query = query.where(PieceModel.group_slug.in_(slugs))
+        else:
+            query = query.where(False)
 
     result = await db.execute(query)
     return result.scalars().all()

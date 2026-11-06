@@ -69,3 +69,6 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     password: str
+
+class EnsembleAssignment(BaseModel):
+    group_slugs: List[str]

@@ -10,9 +10,9 @@ import secrets
 import httpx
 from ..database import get_db
 from ..config import settings
-from ..models.models import User as UserModel, Comment as CommentModel, Media as MediaModel
+from ..models.models import User as UserModel, Comment as CommentModel, Media as MediaModel, UserEnsemble
 from ..schemas.user import ForgotPasswordRequest, ResetPasswordRequest, UserCreate, User, Token, UserDelete, UserActivity
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, get_current_member_user
 from ..exceptions import BadRequestException, UnauthorizedException
 from ..rate_limit import rate_limit
 
@@ -233,3 +233,14 @@ async def reset_password(
     user.reset_token_expires = None
     await db.commit()
     return {"message": "Password updated. You can log in now."}
+
+# in users router
+@router.get("/ensembles")
+async def get_user_ensembles(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_member_user),
+):
+    result = await db.execute(
+        select(UserEnsemble.group_slug).where(UserEnsemble.user_id == current_user.id)
+    )
+    return [{"group_slug": row[0]} for row in result.all()]

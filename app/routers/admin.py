@@ -1,16 +1,15 @@
 from fastapi import APIRouter, Depends, Path, status, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func
-from sqlalchemy.orm import selectinload
 from sqlalchemy import select, delete, func, update
+from sqlalchemy.orm import selectinload
 from typing import List
 import uuid
 
 from ..dependencies import get_current_admin_user
 from ..database import get_db
 from ..models.models import (
-User as UserModel,
+    User as UserModel,
     Comment as CommentModel,
     Performance as PerformanceModel,
     Media as MediaModel,
@@ -18,8 +17,9 @@ User as UserModel,
     SheetMusicPart as SheetMusicPartModel,
     Announcement as AnnouncementModel,
     Event as EventModel,
+    UserEnsemble,
 )
-from ..schemas.user import UserCreate, User, UserUpdate, UserActivity
+from ..schemas.user import UserCreate, User, UserUpdate, UserActivity, EnsembleAssignment
 from ..schemas.performance import Performance, PerformanceCreate, PerformanceDetail, PerformanceUpdate
 from ..routers.users import get_password_hash
 from ..exceptions import NotFoundException, BadRequestException
@@ -49,42 +49,6 @@ async def get_admin_stats(
         "total_users": user_count.scalar_one(),
         "total_media": media_count.scalar_one(),
     }
-
-
-# # ==================== TEMPORARY BOOTSTRAP ENDPOINT ====================
-# @router.post("/bootstrap-first-admin", response_model=User, status_code=status.HTTP_201_CREATED)
-# async def bootstrap_first_admin(
-#     user_in: UserCreate,
-#     db: AsyncSession = Depends(get_db)
-# ):
-#     result = await db.execute(select(UserModel).where(UserModel.is_admin == True))
-#     if result.scalar_one_or_none():
-#         raise BadRequestException("An admin user already exists.")
-
-#     result = await db.execute(
-#         select(UserModel).where(
-#             (UserModel.email == user_in.email) | (UserModel.username == user_in.username)
-#         )
-#     )
-#     if result.scalar_one_or_none():
-#         raise BadRequestException("Email or username already registered")
-
-#     hashed_password = get_password_hash(user_in.password)
-
-#     db_user = UserModel(
-#         email=user_in.email,
-#         username=user_in.username,
-#         full_name=user_in.full_name,
-#         hashed_password=hashed_password,
-#         is_active=True,
-#         is_admin=True,
-#         is_member=False,
-#     )
-
-#     db.add(db_user)
-#     await db.commit()
-#     await db.refresh(db_user)
-#     return db_user
 
 
 # ==================== USER MANAGEMENT ====================
@@ -224,10 +188,6 @@ async def promote_to_admin(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
-    """
-    Promote to Admin.
-    Clears member flag so role is exclusive: Admin only.
-    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -248,10 +208,6 @@ async def demote_from_admin(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
-    """
-    Demote from Admin.
-    Leaves is_member as-is so they can land as Member or User.
-    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -272,11 +228,6 @@ async def promote_to_member(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
-    """
-    Set role to Member only.
-    Clears admin so role is exclusive: Member only.
-    (Use this to step an Admin down to Member in one action.)
-    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -295,10 +246,6 @@ async def demote_from_member(
     db: AsyncSession = Depends(get_db),
     current_admin: UserModel = Depends(get_current_admin_user)
 ):
-    """
-    Remove member status → User.
-    Does not touch is_admin (admins shouldn't also be members).
-    """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -367,6 +314,43 @@ async def delete_user(
     await db.delete(user)
     await db.commit()
     return {"message": f"User {user_id} has been deleted"}
+
+
+@router.get("/users/{user_id}/ensembles")
+async def get_user_ensembles(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    result = await db.execute(
+        select(UserEnsemble).where(UserEnsemble.user_id == user_id)
+    )
+    rows = result.scalars().all()
+    return {"group_slugs": [r.group_slug for r in rows]}
+
+
+@router.put("/users/{user_id}/ensembles")
+async def set_user_ensembles(
+    user_id: int,
+    body: EnsembleAssignment,
+    db: AsyncSession = Depends(get_db),
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise NotFoundException("User not found")
+
+    await db.execute(
+        delete(UserEnsemble).where(UserEnsemble.user_id == user_id)
+    )
+
+    for slug in body.group_slugs:
+        db.add(UserEnsemble(user_id=user_id, group_slug=slug))
+
+    await db.commit()
+    return {"group_slugs": body.group_slugs}
+
 
 # ==================== ADMIN COMMENT HARD DELETE WITH CASCADE ====================
 @router.delete("/comments/{comment_id}")

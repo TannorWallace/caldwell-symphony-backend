@@ -9,6 +9,7 @@ class MemberMessageBase(BaseModel):
 
 class MemberMessageCreate(MemberMessageBase):
     parent_id: Optional[int] = None
+    group_slug: Optional[str] = None
 
 
 class MemberMessageUpdate(BaseModel):
@@ -25,8 +26,8 @@ class MemberMessage(MemberMessageBase):
     created_at: datetime
     username: Optional[str] = None
     full_name: Optional[str] = None
+    group_slug: Optional[str] = None
     replies: Optional[List["MemberMessage"]] = Field(default_factory=list)
 
 
-# Rebuild for recursive model
 MemberMessage.model_rebuild()

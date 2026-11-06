@@ -26,22 +26,8 @@ def _object_path_from_public_url(url: str | None, bucket: str) -> str | None:
     return url.split(marker, 1)[1].split("?")[0]
 
 
-@router.get("/", response_model=list[AnnouncementOut])
-async def list_published_announcements(
-    db: AsyncSession = Depends(get_db),
-    limit: int = 10,
-):
-    result = await db.execute(
-        select(Announcement)
-        .where(Announcement.is_published.is_(True))
-        .order_by(Announcement.created_at.desc())
-        .limit(limit)
-    )
-    return result.scalars().all()
-
-
 @router.get("/admin", response_model=list[AnnouncementOut])
-async def list_all_announcements(
+async def list_all_announcements_admin(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user),
 ):
@@ -51,11 +37,30 @@ async def list_all_announcements(
     return result.scalars().all()
 
 
+@router.get("/", response_model=list[AnnouncementOut])
+async def list_published_announcements(
+    group_slug: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    limit: int = 10,
+):
+    query = (
+        select(Announcement)
+        .where(Announcement.is_published.is_(True))
+        .order_by(Announcement.created_at.desc())
+        .limit(limit)
+    )
+    if group_slug:
+        query = query.where(Announcement.group_slug == group_slug)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 @router.post("/", response_model=AnnouncementOut, status_code=status.HTTP_201_CREATED)
 async def create_announcement(
     title: str = Form(...),
     body: str | None = Form(None),
     is_published: bool = Form(False),
+    group_slug: str | None = Form(None),
     file: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user),
@@ -84,6 +89,7 @@ async def create_announcement(
         body=body.strip() if body else None,
         image_url=image_url,
         is_published=is_published,
+        group_slug=group_slug.strip() if group_slug else None,
         created_by=admin.id,
     )
     db.add(item)
@@ -91,11 +97,10 @@ async def create_announcement(
     await db.refresh(item)
     return item
 
-
 @router.put("/{announcement_id}", response_model=AnnouncementOut)
 async def update_announcement(
     announcement_id: int,
-    payload: AnnouncementUpdate,
+    data: AnnouncementUpdate,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user),
 ):
@@ -106,14 +111,14 @@ async def update_announcement(
     if not item:
         raise HTTPException(status_code=404, detail="Announcement not found")
 
-    data = payload.model_dump(exclude_unset=True)
-    if "title" in data and data["title"] is not None:
-        data["title"] = data["title"].strip()
-    if "body" in data and data["body"] is not None:
-        data["body"] = data["body"].strip() or None
-
-    for key, value in data.items():
-        setattr(item, key, value)
+    if data.title is not None:
+        item.title = data.title.strip()
+    if data.body is not None:
+        item.body = data.body.strip() if data.body else None
+    if data.is_published is not None:
+        item.is_published = data.is_published
+    if data.group_slug is not None:
+        item.group_slug = data.group_slug.strip() if data.group_slug else None
 
     await db.commit()
     await db.refresh(item)
@@ -133,13 +138,5 @@ async def delete_announcement(
     if not item:
         raise HTTPException(status_code=404, detail="Announcement not found")
 
-    object_path = _object_path_from_public_url(item.image_url, ANNOUNCEMENTS_BUCKET)
-    if object_path:
-        try:
-            await supabase_storage.delete_file(ANNOUNCEMENTS_BUCKET, object_path)
-        except Exception:
-            pass
-
     await db.delete(item)
     await db.commit()
-    return None

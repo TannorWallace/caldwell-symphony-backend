@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
-from ..models.models import MemberMessage as MemberMessageModel, User as UserModel
+from ..models.models import MemberMessage as MemberMessageModel, User as UserModel, UserEnsemble
 from ..schemas.member_message import (
     MemberMessage,
     MemberMessageCreate,
@@ -21,7 +21,6 @@ router = APIRouter(
 
 
 def _serialize_message(message: MemberMessageModel, include_replies: bool = False) -> dict:
-    """Safely convert a MemberMessage ORM object into a plain dict"""
     data = {
         "id": message.id,
         "content": message.content,
@@ -31,6 +30,7 @@ def _serialize_message(message: MemberMessageModel, include_replies: bool = Fals
         "created_at": message.created_at,
         "username": message.user.username if message.user else None,
         "full_name": message.user.full_name if message.user else None,
+        "group_slug": message.group_slug,
         "replies": [],
     }
 
@@ -46,14 +46,11 @@ def _serialize_message(message: MemberMessageModel, include_replies: bool = Fals
 
 @router.get("/", response_model=List[MemberMessage])
 async def list_member_messages(
+    group_slug: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_member_user),
 ):
-    """
-    Get all top-level member messages with their replies.
-    Only accessible to members and admins.
-    """
-    result = await db.execute(
+    query = (
         select(MemberMessageModel)
         .options(
             selectinload(MemberMessageModel.user),
@@ -63,12 +60,19 @@ async def list_member_messages(
             MemberMessageModel.parent_id == None,
             MemberMessageModel.is_deleted == False,
         )
-        .order_by(MemberMessageModel.created_at.desc())
     )
+
+    if group_slug:
+        # Ensemble portal: only this ensemble
+        query = query.where(MemberMessageModel.group_slug == group_slug)
+    else:
+        # General board: only messages with no group
+        query = query.where(MemberMessageModel.group_slug == None)
+
+    query = query.order_by(MemberMessageModel.created_at.desc())
+    result = await db.execute(query)
     messages = result.scalars().all()
-
     return [_serialize_message(msg, include_replies=True) for msg in messages]
-
 
 @router.post("/", response_model=MemberMessage, status_code=status.HTTP_201_CREATED)
 async def create_member_message(
@@ -76,10 +80,6 @@ async def create_member_message(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_member_user),
 ):
-    """
-    Create a new message or a reply.
-    Members and admins only.
-    """
     if message_in.parent_id is not None:
         parent_result = await db.execute(
             select(MemberMessageModel).where(
@@ -95,13 +95,13 @@ async def create_member_message(
         content=message_in.content.strip(),
         user_id=current_user.id,
         parent_id=message_in.parent_id,
+        group_slug=message_in.group_slug,
     )
 
     db.add(db_message)
     await db.commit()
     await db.refresh(db_message)
 
-    # Re-fetch with user loaded
     result = await db.execute(
         select(MemberMessageModel)
         .options(selectinload(MemberMessageModel.user))
@@ -119,7 +119,6 @@ async def update_member_message(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_member_user),
 ):
-    """Update your own message"""
     result = await db.execute(
         select(MemberMessageModel)
         .options(selectinload(MemberMessageModel.user))
@@ -149,11 +148,6 @@ async def delete_member_message(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_member_user),
 ):
-    """
-    Soft-delete a message.
-    - Members can delete their own messages
-    - Admins can delete any message
-    """
     result = await db.execute(
         select(MemberMessageModel).where(
             MemberMessageModel.id == message_id,

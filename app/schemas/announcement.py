@@ -7,6 +7,7 @@ class AnnouncementCreate(BaseModel):
     body: str | None = None
     image_url: str | None = None
     is_published: bool = False
+    group_slug: str | None = None
 
 
 class AnnouncementUpdate(BaseModel):
@@ -14,6 +15,7 @@ class AnnouncementUpdate(BaseModel):
     body: str | None = None
     image_url: str | None = None
     is_published: bool | None = None
+    group_slug: str | None = None
 
 
 class AnnouncementOut(BaseModel):
@@ -24,6 +26,7 @@ class AnnouncementOut(BaseModel):
     is_published: bool
     created_by: int | None
     created_at: datetime
+    group_slug: str | None = None
 
     class Config:
         from_attributes = True

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from alembic.environment import Column
 from sqlalchemy import String, Text, Boolean, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
@@ -38,6 +39,20 @@ class User(Base):
     member_messages: Mapped[list["MemberMessage"]] = relationship(
         "MemberMessage", back_populates="user", cascade="all, delete-orphan"
     )
+    ensembles: Mapped[list["UserEnsemble"]] = relationship(
+        "UserEnsemble", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class UserEnsemble(Base):
+    __tablename__ = "user_ensembles"
+
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    group_slug: Mapped[str] = mapped_column(String(100), primary_key=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="ensembles")
 
 
 # ==================== COMMENT MODEL ====================
@@ -158,7 +173,7 @@ class MemberMessage(Base):
         back_populates="parent",
         cascade="all, delete-orphan"
     )
-
+    group_slug = Column(String(100), nullable=True, index=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -172,6 +187,7 @@ class SheetMusicPiece(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    group_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # ← add this
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -182,7 +198,6 @@ class SheetMusicPiece(Base):
         back_populates="piece",
         cascade="all, delete-orphan"
     )
-
 
 class SheetMusicPart(Base):
     """Individual instrument PDF for a piece."""
@@ -225,7 +240,7 @@ class Announcement(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-
+    group_slug = Column(String(100), nullable=True, index=True)
     creator: Mapped["User | None"] = relationship("User")
 
 
