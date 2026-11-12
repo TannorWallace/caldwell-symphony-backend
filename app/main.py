@@ -11,6 +11,7 @@ from .routers.performances import router as performances_router
 from .routers.member_messages import router as member_messages_router
 from .routers.sheet_music import router as sheet_music_router
 from app.routers.announcements import router as announcements_router
+from app.routers.spotlights import router as spotlights_router
 from .routers.events import router as events_router
 from .config import settings
 from .exceptions import APIException
@@ -93,6 +94,7 @@ app.include_router(member_messages_router)
 app.include_router(sheet_music_router)
 app.include_router(announcements_router)
 app.include_router(events_router)
+app.include_router(spotlights_router)
 
 @app.get("/")
 async def root():

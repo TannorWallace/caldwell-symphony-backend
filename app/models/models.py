@@ -275,3 +275,22 @@ class Event(Base):
     )
 
     creator: Mapped["User | None"] = relationship("User")
+
+
+#=================================SPOTLIGHTS============================================
+class Spotlight(Base):
+    __tablename__ = "spotlights"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    guidelines_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    registration_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
