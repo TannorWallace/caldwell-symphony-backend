@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from enum import Enum
-from alembic.environment import Column
-from sqlalchemy import String, Text, Boolean, Integer, DateTime, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from ..database import Base
-from datetime import datetime
+from datetime import date, time, datetime
 from typing import Optional
 
+from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, Date, Time, ForeignKey, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ..database import Base
 
 class MediaType(str, Enum):
     IMAGE = "image"
@@ -187,7 +187,7 @@ class SheetMusicPiece(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    group_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # ← add this
+    group_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -294,3 +294,57 @@ class Spotlight(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class RecurringSchedule(Base):
+    """Repeating weekly schedule rule per ensemble (e.g. every Thursday 7–9pm)."""
+    __tablename__ = "recurring_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Monday ... 6=Sunday
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    recurrence_start: Mapped[date] = mapped_column(Date, nullable=False)
+    recurrence_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # null = ongoing
+
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_by: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    creator: Mapped["User | None"] = relationship("User")
+    exceptions: Mapped[list["ScheduleException"]] = relationship(
+        "ScheduleException", back_populates="recurring_schedule", cascade="all, delete-orphan"
+    )
+
+
+class ScheduleException(Base):
+    """Individual date exception for a recurring schedule (cancel or later override)."""
+    __tablename__ = "schedule_exceptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recurring_schedule_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("recurring_schedules.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    exception_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_cancelled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    recurring_schedule: Mapped["RecurringSchedule"] = relationship(
+        "RecurringSchedule", back_populates="exceptions"
+    )

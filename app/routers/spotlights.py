@@ -13,7 +13,7 @@ from app.schemas.spotlight import SpotlightOut, SpotlightUpdate
 from app.supabase import supabase_storage
 from app.uploads import read_gallery_file
 
-router = APIRouter(prefix="/api/v1/spotlights", tags=["spotlights"])
+router = APIRouter(prefix="/api/v1/spotlights", tags=["Spotlights"])
 
 SPOTLIGHTS_BUCKET = "media"
 

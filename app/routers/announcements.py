@@ -12,7 +12,7 @@ from app.schemas.announcement import AnnouncementOut, AnnouncementUpdate
 from app.supabase import supabase_storage
 from app.uploads import read_flyer_file
 
-router = APIRouter(prefix="/api/v1/announcements", tags=["announcements"])
+router = APIRouter(prefix="/api/v1/announcements", tags=["Announcements"])
 
 ANNOUNCEMENTS_BUCKET = "media"
 

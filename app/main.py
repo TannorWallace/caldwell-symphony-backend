@@ -13,6 +13,7 @@ from .routers.sheet_music import router as sheet_music_router
 from app.routers.announcements import router as announcements_router
 from app.routers.spotlights import router as spotlights_router
 from .routers.events import router as events_router
+from .routers.ensemble_schedules import router as ensemble_schedules_router
 from .config import settings
 from .exceptions import APIException
 
@@ -95,6 +96,7 @@ app.include_router(sheet_music_router)
 app.include_router(announcements_router)
 app.include_router(events_router)
 app.include_router(spotlights_router)
+app.include_router(ensemble_schedules_router)
 
 @app.get("/")
 async def root():

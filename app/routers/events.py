@@ -14,7 +14,7 @@ from ..schemas.event import EventOut, EventUpdate
 from ..supabase import supabase_storage
 from ..uploads import read_gallery_file
 
-router = APIRouter(prefix="/api/v1/events", tags=["events"])
+router = APIRouter(prefix="/api/v1/events", tags=["Events"])
 
 EVENTS_BUCKET = "media"
 

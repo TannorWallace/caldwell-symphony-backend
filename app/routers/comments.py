@@ -10,7 +10,7 @@ from ..models.models import Comment as CommentModel, User as UserModel
 from ..schemas.comment import Comment, CommentCreate, CommentUpdate
 from ..exceptions import NotFoundException, ForbiddenException, BadRequestException
 
-router = APIRouter(prefix="/api/v1/comments", tags=["comments"])
+router = APIRouter(prefix="/api/v1/comments", tags=["Comments"])
 
 
 # ==================== GET COMMENTS FOR MEDIA ====================
